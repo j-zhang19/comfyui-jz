@@ -165,6 +165,10 @@ class GeminiImageGenerate:
                 "images": ("IMAGE", {"tooltip": "a LIST of images (e.g. from "
                                                 "jz Resize Long Edge) — all "
                                                 "frames are sent"}),
+                "batch_size": ("INT", {"default": 1, "min": 1, "max": 8,
+                                       "tooltip": "N parallel API calls -> N "
+                                                  "images out (one shared "
+                                                  "token, per-call retries)"}),
             },
         }
 
@@ -203,6 +207,7 @@ class GeminiImageGenerate:
         image_9: torch.Tensor = None,
         image_10: torch.Tensor = None,
         images=None,
+        batch_size: int = 1,
     ):
         # INPUT_IS_LIST: scalars arrive as 1-element lists, image slots as
         # lists of tensors — unwrap the former, flatten the latter
@@ -219,6 +224,7 @@ class GeminiImageGenerate:
         resolution = _scalar(resolution)
         backend = _scalar(backend, "generativelanguage")
         custom_model = _scalar(custom_model, "")
+        batch_size = max(1, int(_scalar(batch_size, 1)))
 
         if model == "custom" and custom_model:
             model = custom_model
@@ -301,43 +307,57 @@ class GeminiImageGenerate:
 
         from ...common.http import post_with_retries
 
-        resp = post_with_retries(url, headers, payload, timeout=600, tag="jz gemini")
-        if not resp.ok:
-            body = resp.text
-            body = re.sub(
-                r'"data"\s*:\s*"[A-Za-z0-9+/=]{100,}"',
-                '"data": "<base64 truncated>"',
-                body,
-            )
-            print(f"[Gemini] API error {resp.status_code}: {body}")
-            resp.raise_for_status()
-        data = resp.json()
-
-        # Find the image part in the response (text parts may come first)
-        try:
-            parts_resp = data["candidates"][0]["content"]["parts"]
-        except KeyError:
+        def _one_call(i: int) -> Image.Image:
+            # token minted once and shared (read-only headers); each call gets
+            # its own transport retries via the pooled session
+            resp = post_with_retries(url, headers, payload, timeout=600,
+                                     tag=f"jz gemini {i + 1}/{batch_size}")
+            if not resp.ok:
+                body = re.sub(r'"data"\s*:\s*"[A-Za-z0-9+/=]{100,}"',
+                              '"data": "<base64 truncated>"', resp.text)
+                raise RuntimeError(f"Gemini API error {resp.status_code}: {body[:500]}")
+            data = resp.json()
+            try:
+                parts_resp = data["candidates"][0]["content"]["parts"]
+            except (KeyError, IndexError, TypeError):
+                raise RuntimeError(
+                    f"Unexpected response structure: {json.dumps(data)[:500]}")
+            for part in parts_resp:
+                if "inlineData" in part:
+                    raw = base64.b64decode(part["inlineData"]["data"])
+                    return Image.open(BytesIO(raw)).convert("RGB")
             raise RuntimeError(
-                f"Unexpected response structure: {json.dumps(data, indent=2)}"
-            )
+                f"No image in response parts: {[list(p.keys()) for p in parts_resp]}")
 
-        output_b64 = None
-        for part in parts_resp:
-            if "inlineData" in part:
-                output_b64 = part["inlineData"]["data"]
-                break
+        if batch_size == 1:
+            pils = [_one_call(0)]
+        else:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=min(batch_size, 4)) as pool:
+                futs = [pool.submit(_one_call, i) for i in range(batch_size)]
+                results, errors = [], []
+                for f in futs:
+                    try:
+                        results.append(f.result())
+                    except Exception as e:  # noqa: BLE001
+                        errors.append(e)
+            if not results:
+                raise errors[0]
+            if errors:
+                print(f"[Gemini] {len(errors)}/{batch_size} batch calls failed: "
+                      f"{errors[0]}", flush=True)
+            pils = results
 
-        if output_b64 is None:
-            raise ValueError(
-                f"No image found in response parts: {[list(p.keys()) for p in parts_resp]}"
-            )
-
-        output_bytes = base64.b64decode(output_b64)
-        output_pil = Image.open(BytesIO(output_bytes)).convert("RGB")
-
-        # Convert back to ComfyUI tensor (BHWC, 0-1 float)
-        output_np = np.array(output_pil).astype(np.float32) / 255.0
-        output_tensor = torch.from_numpy(output_np).unsqueeze(0)
+        # stack into one IMAGE batch; identical aspect/resolution should give
+        # identical dims, but resize stragglers to the first frame if not
+        ref = pils[0].size
+        frames = []
+        for p in pils:
+            if p.size != ref:
+                p = p.resize(ref, Image.LANCZOS)
+            arr = np.array(p).astype(np.float32) / 255.0
+            frames.append(torch.from_numpy(arr))
+        output_tensor = torch.stack(frames, dim=0)
 
         return (output_tensor,)
 
