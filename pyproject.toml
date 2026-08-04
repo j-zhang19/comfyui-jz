@@ -1,7 +1,12 @@
 [project]
 name = "comfyui-jz"
 description = "Jacques' personal ComfyUI nodes (Gemini outpaint, padding, extras)"
-version = "1.0.0"
+version = "1.0.1"
+license = {file = "LICENSE"}
+dependencies = ["requests", "pillow", "numpy"]
+
+[project.urls]
+Repository = "https://github.com/j-zhang19/comfyui-jz"
 
 [tool.comfy]
 PublisherId = "amaunra"
