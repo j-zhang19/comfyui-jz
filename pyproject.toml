@@ -4,5 +4,5 @@ description = "Jacques' personal ComfyUI nodes (Gemini outpaint, padding, extras
 version = "1.0.0"
 
 [tool.comfy]
-PublisherId = "jzhang-pop"
+PublisherId = "amaunra"
 DisplayName = "comfyui-jz"
