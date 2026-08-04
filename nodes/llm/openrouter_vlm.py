@@ -68,7 +68,7 @@ class jz_OpenRouterVLM:
                                        "default": ""}),
                 "custom_model": ("STRING", {"default": ""}),
                 "api_key": ("STRING", {"default": ""}),
-                "max_edge": ("INT", {"default": 2048, "min": 256, "max": 8192,
+                "max_edge": ("INT", {"default": 256, "min": 64, "max": 8192,
                                      "tooltip": "images are downscaled to this "
                                                 "long edge before upload"}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 2**31 - 1,
