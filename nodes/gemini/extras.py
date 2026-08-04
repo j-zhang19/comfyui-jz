@@ -74,7 +74,7 @@ class GeminiFillSeamRepair:
     RETURN_TYPES = ("IMAGE", "FLOAT")
     RETURN_NAMES = ("image", "residue")
     FUNCTION = "repair"
-    CATEGORY = "JZ/gemini"
+    CATEGORY = "jz/gemini"
 
     def repair(
         self,
@@ -154,7 +154,7 @@ class GeminiPromptBuilder:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("prompt",)
     FUNCTION = "build"
-    CATEGORY = "JZ/gemini"
+    CATEGORY = "jz/gemini"
 
     def build(self, scene_context: str):
         ctx = (scene_context or "").strip()

@@ -167,7 +167,7 @@ class GeminiImageGenerate:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "generate"
-    CATEGORY = "JZ/gemini"
+    CATEGORY = "jz/gemini"
 
     def _tensor_to_base64(self, image: torch.Tensor) -> str:
         """Convert a ComfyUI image tensor (BHWC, 0-1 float) to a base64 PNG string."""
@@ -266,16 +266,9 @@ class GeminiImageGenerate:
             "safetySettings": safety_settings,
         }
 
-        # Call API with exponential backoff on 429
-        max_retries = 10
-        for attempt in range(max_retries):
-            resp = requests.post(url, headers=headers, json=payload, timeout=600)
-            if resp.status_code == 429 and attempt < max_retries - 1:
-                wait = 2 ** attempt
-                print(f"[Gemini] Rate limited (429), retrying in {wait}s (attempt {attempt + 1}/{max_retries})")
-                time.sleep(wait)
-                continue
-            break
+        from ...common.http import post_with_retries
+
+        resp = post_with_retries(url, headers, payload, timeout=600, tag="jz gemini")
         if not resp.ok:
             body = resp.text
             body = re.sub(
@@ -338,7 +331,7 @@ class GeminiComposite:
     RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE")
     RETURN_NAMES = ("image", "outpaint_mask", "paste_mask")
     FUNCTION = "composite"
-    CATEGORY = "JZ/gemini"
+    CATEGORY = "jz/gemini"
 
     def composite(
         self,

@@ -9,27 +9,16 @@ Differences from the vermeer node this replaces:
 - the whole IMAGE batch is sent: batch of N frames = N images in the call
 - API key: node input > OPENROUTER_API_KEY env > config.ini next to pack
 """
-import base64
 import configparser
-import io
 import json
 import os
-import re
-import time
+from pathlib import Path
 
-import numpy as np
-import requests
-import torch
-from PIL import Image
+from ...common.http import post_with_retries, truncate_b64
+from ...common.images import batch_to_data_urls
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-
-_SESSION = requests.Session()
-_RETRY_BASE_DELAY = 2.0
-_MAX_ATTEMPTS = 6
-_BACKOFF_CAP = 45.0
-_RETRY_AFTER_CAP = 120.0
-_RETRYABLE_STATUS = {408, 429, 500, 502, 503, 504}
+_PACK_ROOT = Path(__file__).resolve().parents[2]
 
 MODELS = [
     "anthropic/claude-opus-4.8",
@@ -39,77 +28,25 @@ MODELS = [
 ]
 
 
-def _truncate_b64(text: str) -> str:
-    return re.sub(r'"(?:data|url)"\s*:\s*"[A-Za-z0-9+/=:;,]{100,}"',
-                  '"data": "<base64 truncated>"', text or "")
-
-
 def _resolve_api_key(node_input: str) -> str:
     if node_input.strip():
         return node_input.strip()
     if os.environ.get("OPENROUTER_API_KEY", "").strip():
         return os.environ["OPENROUTER_API_KEY"].strip()
     cfg = configparser.ConfigParser(interpolation=None)
-    cfg.read(os.path.join(os.path.dirname(__file__), "config.ini"), encoding="utf-8")
+    cfg.read(str(_PACK_ROOT / "config.ini"), encoding="utf-8")
     key = cfg.get("API", "OPENROUTER_API_KEY", fallback="").strip()
     if not key:
         raise RuntimeError(
             "No OpenRouter key: set the api_key input, the OPENROUTER_API_KEY "
-            "env var, or [API] OPENROUTER_API_KEY in comfyui-jz/config.ini")
+            "env var, or [API] OPENROUTER_API_KEY in comfyui-jz/config.ini (pack root)")
     return key
 
 
-def _post_with_retries(payload: dict, headers: dict) -> requests.Response:
-    last_err = None
-    for attempt in range(_MAX_ATTEMPTS):
-        try:
-            resp = _SESSION.post(OPENROUTER_URL, headers=headers, json=payload,
-                                 timeout=300)
-        except (requests.ConnectionError, requests.Timeout) as e:
-            last_err = e
-            if attempt < _MAX_ATTEMPTS - 1:
-                print(f"[JZ VLM] {type(e).__name__}, retry "
-                      f"{attempt + 1}/{_MAX_ATTEMPTS - 1}", flush=True)
-                time.sleep(min(_BACKOFF_CAP, _RETRY_BASE_DELAY * 2 ** attempt))
-                continue
-            break
-        if resp.status_code in _RETRYABLE_STATUS and attempt < _MAX_ATTEMPTS - 1:
-            delay = min(_BACKOFF_CAP, _RETRY_BASE_DELAY * 2 ** attempt)
-            retry_after = resp.headers.get("Retry-After")
-            if retry_after:
-                try:
-                    delay = min(float(retry_after), _RETRY_AFTER_CAP)
-                except ValueError:
-                    pass
-            print(f"[JZ VLM] HTTP {resp.status_code}, retry "
-                  f"{attempt + 1}/{_MAX_ATTEMPTS - 1} in {delay:.0f}s", flush=True)
-            time.sleep(delay)
-            continue
-        return resp
-    raise RuntimeError(f"OpenRouter unreachable after {_MAX_ATTEMPTS} attempts: {last_err}")
-
-
-def _batch_to_data_urls(image: torch.Tensor, max_edge: int) -> list[str]:
-    """Every frame of the BHWC batch becomes one image part."""
-    urls = []
-    for frame in image:
-        arr = (frame.clamp(0, 1).cpu().numpy() * 255.0).astype(np.uint8)
-        pil = Image.fromarray(arr)
-        if max(pil.size) > max_edge:
-            scale = max_edge / max(pil.size)
-            pil = pil.resize((max(1, round(pil.width * scale)),
-                              max(1, round(pil.height * scale))), Image.LANCZOS)
-        buf = io.BytesIO()
-        pil.convert("RGB").save(buf, format="PNG")
-        urls.append("data:image/png;base64,"
-                    + base64.b64encode(buf.getvalue()).decode())
-    return urls
-
-
-class JZ_OpenRouterVLM:
+class jz_OpenRouterVLM:
     """One call: system instruction + optional text + optional image batch -> text."""
 
-    CATEGORY = "JZ/llm"
+    CATEGORY = "jz/llm"
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("text", "cost")
     FUNCTION = "run"
@@ -146,7 +83,7 @@ class JZ_OpenRouterVLM:
         if content.strip():
             user_parts.append({"type": "text", "text": content})
         if image is not None:
-            for url in _batch_to_data_urls(image, max_edge):
+            for url in batch_to_data_urls(image, max_edge):
                 user_parts.append({"type": "image_url", "image_url": {"url": url}})
         if not user_parts:
             user_parts.append({"type": "text", "text": ""})
@@ -166,10 +103,10 @@ class JZ_OpenRouterVLM:
             "Content-Type": "application/json",
         }
 
-        resp = _post_with_retries(payload, headers)
+        resp = post_with_retries(OPENROUTER_URL, headers, payload, tag="jz vlm")
         if resp.status_code >= 400:
             raise RuntimeError(f"OpenRouter HTTP {resp.status_code}: "
-                               f"{_truncate_b64(resp.text)[:400]}")
+                               f"{truncate_b64(resp.text)[:400]}")
         data = resp.json()
         if "error" in data:
             raise RuntimeError(f"OpenRouter error: "
@@ -177,7 +114,7 @@ class JZ_OpenRouterVLM:
         choices = data.get("choices") or []
         if not choices or not (choices[0].get("message") or {}).get("content"):
             raise RuntimeError(f"OpenRouter returned no content: "
-                               f"{_truncate_b64(json.dumps(data))[:400]}")
+                               f"{truncate_b64(json.dumps(data))[:400]}")
 
         text = choices[0]["message"]["content"].strip()
         cost = (data.get("usage") or {}).get("cost")
@@ -185,5 +122,5 @@ class JZ_OpenRouterVLM:
         return (text, cost_str)
 
 
-NODE_CLASS_MAPPINGS = {"JZ_OpenRouterVLM": JZ_OpenRouterVLM}
-NODE_DISPLAY_NAME_MAPPINGS = {"JZ_OpenRouterVLM": "JZ OpenRouter VLM"}
+NODE_CLASS_MAPPINGS = {"jz_OpenRouterVLM": jz_OpenRouterVLM}
+NODE_DISPLAY_NAME_MAPPINGS = {"jz_OpenRouterVLM": "jz OpenRouter VLM"}

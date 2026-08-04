@@ -473,7 +473,7 @@ class GeminiPadCalculator:
     )
 
     FUNCTION = "calculate"
-    CATEGORY = "JZ/padding"
+    CATEGORY = "jz/padding"
 
     def calculate(self, image, aspect_ratio: str, resolution: str, mode: str, fill_mode: str = "edge_average"):
         _, H, W, _ = image.shape

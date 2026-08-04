@@ -1,22 +1,21 @@
-"""comfyui-jz — Jacques' personal node pack. One category: JZ/."""
-from .gemini_outpaint import (
-    NODE_CLASS_MAPPINGS as _GEMINI,
-    NODE_DISPLAY_NAME_MAPPINGS as _GEMINI_NAMES,
-)
-from .nano_banana_pad import (
-    NODE_CLASS_MAPPINGS as _PAD,
-    NODE_DISPLAY_NAME_MAPPINGS as _PAD_NAMES,
-)
-from .outpaint_extras import (
-    NODE_CLASS_MAPPINGS as _EXTRAS,
-    NODE_DISPLAY_NAME_MAPPINGS as _EXTRAS_NAMES,
-)
-from .openrouter_vlm import (
-    NODE_CLASS_MAPPINGS as _VLM,
-    NODE_DISPLAY_NAME_MAPPINGS as _VLM_NAMES,
-)
+"""comfyui-jz — Jacques' personal node pack. Everything under the jz/ category.
 
-NODE_CLASS_MAPPINGS = {**_GEMINI, **_PAD, **_EXTRAS, **_VLM}
-NODE_DISPLAY_NAME_MAPPINGS = {**_GEMINI_NAMES, **_PAD_NAMES, **_EXTRAS_NAMES, **_VLM_NAMES}
+Auto-discovers node modules: any nodes/**/*.py exporting NODE_CLASS_MAPPINGS
+is merged in. Adding a node = dropping a file, no edits here.
+"""
+import importlib
+from pathlib import Path
+
+NODE_CLASS_MAPPINGS = {}
+NODE_DISPLAY_NAME_MAPPINGS = {}
+
+_root = Path(__file__).parent
+for _py in sorted((_root / "nodes").rglob("*.py")):
+    if _py.name.startswith("_"):
+        continue
+    _rel = _py.relative_to(_root).with_suffix("")
+    _mod = importlib.import_module("." + ".".join(_rel.parts), __package__)
+    NODE_CLASS_MAPPINGS.update(getattr(_mod, "NODE_CLASS_MAPPINGS", {}))
+    NODE_DISPLAY_NAME_MAPPINGS.update(getattr(_mod, "NODE_DISPLAY_NAME_MAPPINGS", {}))
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
