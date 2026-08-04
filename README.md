@@ -17,3 +17,11 @@ common/
   so existing workflows keep working.
 - API keys: `config.ini` at pack root (see `config.ini.example`, gitignored)
   or `OPENROUTER_API_KEY` env, or node input.
+
+## Node-evolution rule
+
+When changing an existing node's inputs, only APPEND new widgets — converting
+a widget to a socket or reordering widgets shifts `widgets_values` in saved
+workflows and corrupts existing node instances (values land in the wrong
+slots, e.g. a string in a seed shows NaN). If a breaking change is necessary,
+users must delete + re-add the node on their canvas.
