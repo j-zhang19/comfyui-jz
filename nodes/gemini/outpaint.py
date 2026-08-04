@@ -130,7 +130,6 @@ class GeminiImageGenerate:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("IMAGE",),
                 "prompt": (
                     "STRING",
                     {
@@ -151,6 +150,7 @@ class GeminiImageGenerate:
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF, "control_after_generate": True}),
             },
             "optional": {
+                "image": ("IMAGE",),
                 "backend": (["generativelanguage", "vertex"], {"default": "generativelanguage"}),
                 "custom_model": ("STRING", {"default": ""}),
                 "image_2": ("IMAGE",),
@@ -179,7 +179,6 @@ class GeminiImageGenerate:
 
     def generate(
         self,
-        image: torch.Tensor,
         prompt: str,
         service_account_base64: str,
         model: str,
@@ -189,6 +188,7 @@ class GeminiImageGenerate:
         seed: int = 0,  # cache-buster only; intentionally unused (not sent to Gemini)
         backend: str = "generativelanguage",
         custom_model: str = "",
+        image: torch.Tensor = None,
         image_2: torch.Tensor = None,
         image_3: torch.Tensor = None,
         image_4: torch.Tensor = None,
@@ -202,23 +202,18 @@ class GeminiImageGenerate:
         if model == "custom" and custom_model:
             model = custom_model
 
-        # Collect all provided images. A connected-but-empty tensor (0 px, e.g. an
-        # unselected LoadImage or an empty crop/mask upstream) would crash the PNG
-        # encoder with "cannot write empty image", so skip empties and name the
-        # slot in the log. The required `image` being empty is a hard error.
+        # Collect provided images. All slots are optional: with zero images this
+        # is a pure text-to-image call. A connected-but-empty tensor (0 px, e.g.
+        # an unselected LoadImage or an empty crop upstream) would crash the PNG
+        # encoder, so skip empties and name the slot in the log.
         def _nonempty(t) -> bool:
             return t is not None and t.ndim == 4 and t.shape[1] > 0 and t.shape[2] > 0
 
-        if not _nonempty(image):
-            raise ValueError(
-                "GeminiImageGenerate: the required `image` input is empty (0 px) — "
-                "check the node feeding image slot 1."
-            )
-
-        images = [image]
+        images = []
         for idx, img in enumerate(
-            [image_2, image_3, image_4, image_5, image_6, image_7, image_8, image_9, image_10],
-            start=2,
+            [image, image_2, image_3, image_4, image_5, image_6, image_7,
+             image_8, image_9, image_10],
+            start=1,
         ):
             if img is None:
                 continue
