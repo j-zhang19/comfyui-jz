@@ -62,7 +62,10 @@ class jz_OpenRouterVLM:
             },
             "optional": {
                 "image": ("IMAGE",),
-                "content": ("STRING", {"multiline": True, "default": ""}),
+                # forceInput: a connectable socket (pipe text from other
+                # nodes), not an inline widget
+                "content": ("STRING", {"forceInput": True, "multiline": True,
+                                       "default": ""}),
                 "custom_model": ("STRING", {"default": ""}),
                 "api_key": ("STRING", {"default": ""}),
                 "max_edge": ("INT", {"default": 2048, "min": 256, "max": 8192,
