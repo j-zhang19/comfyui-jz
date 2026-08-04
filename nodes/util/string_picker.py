@@ -27,7 +27,10 @@ class jz_StringPicker:
                                                 "(or per separator)"}),
                 "mode": (["random", "index"], {"default": "random"}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 2**31 - 1,
-                                 "tooltip": "random mode: same seed = same pick"}),
+                                 "control_after_generate": True,
+                                 "tooltip": "random mode: same seed = same pick; "
+                                            "set the control to 'randomize' to "
+                                            "re-roll on every queue"}),
                 "index": ("INT", {"default": 0, "min": 0, "max": 2**31 - 1,
                                   "tooltip": "index mode: wraps around the list"}),
             },
