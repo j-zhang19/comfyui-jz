@@ -162,12 +162,16 @@ class GeminiImageGenerate:
                 "image_8": ("IMAGE",),
                 "image_9": ("IMAGE",),
                 "image_10": ("IMAGE",),
+                "images": ("IMAGE", {"tooltip": "a LIST of images (e.g. from "
+                                                "jz Resize Long Edge) — all "
+                                                "frames are sent"}),
             },
         }
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "generate"
     CATEGORY = "jz/gemini"
+    INPUT_IS_LIST = True
 
     def _tensor_to_base64(self, image: torch.Tensor) -> str:
         """Convert a ComfyUI image tensor (BHWC, 0-1 float) to a base64 PNG string."""
@@ -198,7 +202,24 @@ class GeminiImageGenerate:
         image_8: torch.Tensor = None,
         image_9: torch.Tensor = None,
         image_10: torch.Tensor = None,
+        images=None,
     ):
+        # INPUT_IS_LIST: scalars arrive as 1-element lists, image slots as
+        # lists of tensors — unwrap the former, flatten the latter
+        def _scalar(v, default=None):
+            if isinstance(v, list):
+                return v[0] if v else default
+            return v if v is not None else default
+
+        prompt = _scalar(prompt)
+        service_account_base64 = _scalar(service_account_base64, "")
+        model = _scalar(model)
+        location = _scalar(location)
+        aspect_ratio = _scalar(aspect_ratio)
+        resolution = _scalar(resolution)
+        backend = _scalar(backend, "generativelanguage")
+        custom_model = _scalar(custom_model, "")
+
         if model == "custom" and custom_model:
             model = custom_model
 
@@ -220,18 +241,24 @@ class GeminiImageGenerate:
         def _nonempty(t) -> bool:
             return t is not None and t.ndim == 4 and t.shape[1] > 0 and t.shape[2] > 0
 
-        images = []
-        for idx, img in enumerate(
+        def _tensors(v):
+            if v is None:
+                return []
+            return [t for t in (v if isinstance(v, list) else [v]) if t is not None]
+
+        collected = []
+        for idx, slot in enumerate(
             [image, image_2, image_3, image_4, image_5, image_6, image_7,
-             image_8, image_9, image_10],
+             image_8, image_9, image_10, images],
             start=1,
         ):
-            if img is None:
-                continue
-            if not _nonempty(img):
-                print(f"[Gemini] skipping empty image_{idx} (0 px) — check the node feeding that slot")
-                continue
-            images.append(img)
+            for t in _tensors(slot):
+                if not _nonempty(t):
+                    print(f"[Gemini] skipping empty tensor in slot {idx} (0 px)")
+                    continue
+                for frame in t:  # every batch frame becomes one image part
+                    collected.append(frame.unsqueeze(0))
+        images = collected
 
         # Build parts: text prompt + all images as inline_data
         parts = [{"text": prompt}]
