@@ -1,0 +1,8 @@
+[project]
+name = "comfyui-jz"
+description = "Jacques' personal ComfyUI nodes (Gemini outpaint, padding, extras)"
+version = "1.0.0"
+
+[tool.comfy]
+PublisherId = "jzhang-pop"
+DisplayName = "comfyui-jz"
