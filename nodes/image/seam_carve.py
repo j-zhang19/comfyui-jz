@@ -13,8 +13,17 @@ color-coded mask image: protect_mask adds a large positive per-pixel weight
 To fully remove an object, reduce the width by at least the object's width,
 then enlarge back.
 """
+import os
+from concurrent.futures import ThreadPoolExecutor
+
 import numpy as np
 import torch
+
+try:
+    from numba import njit
+    _HAS_NUMBA = True
+except ImportError:  # numpy fallback keeps the node functional without numba
+    _HAS_NUMBA = False
 
 _BIG = 1e6  # mask weight magnitude ("large" per the paper)
 
@@ -37,7 +46,7 @@ def _backward_energy(rgb: np.ndarray, use_luma: bool) -> np.ndarray:
     return np.sqrt(acc)
 
 
-def _dp_backward(e: np.ndarray, weight: np.ndarray) -> np.ndarray:
+def _dp_backward_np(e: np.ndarray, weight: np.ndarray) -> np.ndarray:
     """Cumulative-cost DP; returns the optimal vertical seam (col per row)."""
     n, m = e.shape
     cost = e + weight
@@ -53,7 +62,7 @@ def _dp_backward(e: np.ndarray, weight: np.ndarray) -> np.ndarray:
     return _backtrack(M, parent)
 
 
-def _dp_forward(gray: np.ndarray, weight: np.ndarray) -> np.ndarray:
+def _dp_forward_np(gray: np.ndarray, weight: np.ndarray) -> np.ndarray:
     """Forward-energy DP (cost of edges CREATED by removal), periodic wrap."""
     n, m = gray.shape
     M = weight[0].astype(np.float64).copy()
@@ -81,11 +90,97 @@ def _backtrack(last_row: np.ndarray, parent: np.ndarray) -> np.ndarray:
     return seam
 
 
+if _HAS_NUMBA:
+
+    @njit(cache=True, nogil=True)
+    def _dp_backward_nb(cost):
+        # tie-breaking mirrors the numpy path: left preferred, then up, right
+        n, m = cost.shape
+        parent = np.zeros((n, m), dtype=np.int8)
+        prev = cost[0].copy()
+        for i in range(1, n):
+            cur = np.empty(m, dtype=np.float64)
+            for j in range(m):
+                if j > 0:
+                    best = prev[j - 1]
+                    arg = -1
+                else:
+                    best = np.inf
+                    arg = -1
+                if prev[j] < best:
+                    best = prev[j]
+                    arg = 0
+                if j < m - 1 and prev[j + 1] < best:
+                    best = prev[j + 1]
+                    arg = 1
+                parent[i, j] = arg
+                cur[j] = cost[i, j] + best
+            prev = cur
+        seam = np.empty(n, dtype=np.int64)
+        arg = 0
+        best = prev[0]
+        for j in range(1, m):
+            if prev[j] < best:
+                best = prev[j]
+                arg = j
+        seam[n - 1] = arg
+        for i in range(n - 1, 0, -1):
+            seam[i - 1] = seam[i] + parent[i, seam[i]]
+        return seam
+
+    @njit(cache=True, nogil=True)
+    def _dp_forward_nb(gray, weight):
+        n, m = gray.shape
+        parent = np.zeros((n, m), dtype=np.int8)
+        prev = weight[0].copy()
+        for i in range(1, n):
+            cur = np.empty(m, dtype=np.float64)
+            for j in range(m):
+                jl = j - 1 if j > 0 else m - 1  # periodic wrap (np.roll parity)
+                jr = j + 1 if j < m - 1 else 0
+                cu = abs(gray[i, jr] - gray[i, jl])
+                if j > 0:
+                    best = prev[j - 1] + cu + abs(gray[i - 1, j] - gray[i, jl])
+                    arg = -1
+                else:
+                    best = np.inf
+                    arg = -1
+                cand = prev[j] + cu
+                if cand < best:
+                    best = cand
+                    arg = 0
+                if j < m - 1:
+                    cand = prev[j + 1] + cu + abs(gray[i - 1, j] - gray[i, jr])
+                    if cand < best:
+                        best = cand
+                        arg = 1
+                parent[i, j] = arg
+                cur[j] = weight[i, j] + best
+            prev = cur
+        seam = np.empty(n, dtype=np.int64)
+        arg = 0
+        best = prev[0]
+        for j in range(1, m):
+            if prev[j] < best:
+                best = prev[j]
+                arg = j
+        seam[n - 1] = arg
+        for i in range(n - 1, 0, -1):
+            seam[i - 1] = seam[i] + parent[i, seam[i]]
+        return seam
+
+
 def _find_seam(rgb, weight, energy, use_luma):
     if energy == "forward":
         gray = _luma(rgb) if use_luma else rgb.mean(axis=-1)
-        return _dp_forward(gray, weight)
-    return _dp_backward(_backward_energy(rgb, use_luma), weight)
+        if _HAS_NUMBA:
+            return _dp_forward_nb(np.ascontiguousarray(gray),
+                                  np.ascontiguousarray(weight))
+        return _dp_forward_np(gray, weight)
+    e = _backward_energy(rgb, use_luma)
+    if _HAS_NUMBA:
+        return _dp_backward_nb(np.ascontiguousarray(e + weight))
+    return _dp_backward_np(e, weight)
 
 
 def _remove_seam(arr: np.ndarray, seam: np.ndarray) -> np.ndarray:
@@ -198,8 +293,7 @@ class jz_SeamCarve:
 
     def carve(self, image, target_width, target_height, energy, use_luma,
               protect_mask=None, remove_mask=None):
-        frames = []
-        for b in range(image.shape[0]):
+        def _one(b: int) -> torch.Tensor:
             rgb = image[b].cpu().numpy().astype(np.float64)
             weight = np.zeros(rgb.shape[:2], dtype=np.float64)
             for mask, sign in ((protect_mask, +_BIG), (remove_mask, -_BIG)):
@@ -213,7 +307,16 @@ class jz_SeamCarve:
                 weight += sign * m_np.astype(np.float64)
             out = seam_carve(rgb, target_width, target_height, energy,
                              use_luma, weight)
-            frames.append(torch.from_numpy(out.astype(np.float32)))
+            return torch.from_numpy(out.astype(np.float32))
+
+        n_frames = image.shape[0]
+        if n_frames == 1:
+            frames = [_one(0)]
+        else:
+            # frames are independent; numba kernels run with nogil so threads scale
+            with ThreadPoolExecutor(max_workers=min(n_frames,
+                                                    os.cpu_count() or 4)) as pool:
+                frames = list(pool.map(_one, range(n_frames)))
         return (torch.stack(frames, dim=0),)
 
 
