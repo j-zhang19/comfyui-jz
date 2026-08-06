@@ -78,12 +78,17 @@ class jz_OpenRouterVLM:
                 # thinking — cap it or answers come back truncated
                 "reasoning": (["default", "low", "medium", "high"],
                               {"default": "low"}),
+                # appended (append-only rule). forces valid-json responses
+                # via response_format; leftover markdown fences are stripped
+                "json_output": ("BOOLEAN", {"default": False,
+                                            "tooltip": "force the model to "
+                                                       "answer with valid json"}),
             },
         }
 
     def run(self, instruction, model, max_tokens, image=None, content="",
             custom_model="", api_key="", max_edge=2048, seed=0,
-            reasoning="low"):
+            reasoning="low", json_output=False):
         if model == "custom":
             if not custom_model.strip():
                 raise RuntimeError("model is 'custom' but custom_model is empty")
@@ -110,6 +115,8 @@ class jz_OpenRouterVLM:
         }
         if reasoning != "default":
             payload["reasoning"] = {"effort": reasoning}
+        if json_output:
+            payload["response_format"] = {"type": "json_object"}
         headers = {
             "Authorization": f"Bearer {_resolve_api_key(api_key)}",
             "Content-Type": "application/json",
@@ -133,6 +140,9 @@ class jz_OpenRouterVLM:
                   "reasoning models eat tokens; raise max_tokens or lower "
                   "the reasoning effort)", flush=True)
         text = choices[0]["message"]["content"].strip()
+        if json_output and text.startswith("```"):
+            # some models still wrap in ```json fences despite response_format
+            text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
         cost = (data.get("usage") or {}).get("cost")
         cost_str = f"${cost:.4f}" if isinstance(cost, (int, float)) else "$?"
         return (text, cost_str)
