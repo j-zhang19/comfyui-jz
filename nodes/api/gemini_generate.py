@@ -9,7 +9,7 @@ import tempfile
 import time
 import re
 from io import BytesIO
-from PIL import Image, ImageFilter
+from PIL import Image
 
 
 
@@ -134,7 +134,7 @@ class GeminiImageGenerate:
                     "STRING",
                     {
                         "multiline": True,
-                        "default": "Extend the first image naturally. The areas matching the color shown in the second image are what must be filled. Pixels that do not match the second image's color should be left untouched and remains exactly the same.",
+                        "default": "Generate an image of a cute dog.",
                     },
                 ),
                 "service_account_base64": ("STRING", {"default": ""}),
@@ -172,9 +172,11 @@ class GeminiImageGenerate:
             },
         }
 
-    RETURN_TYPES = ("IMAGE",)
+    # outputs appended (never reordered) so existing links keep their slots
+    RETURN_TYPES = ("IMAGE", "STRING", "INT")
+    RETURN_NAMES = ("image", "usage", "total_tokens")
     FUNCTION = "generate"
-    CATEGORY = "jz/gemini"
+    CATEGORY = "jz/api"
     INPUT_IS_LIST = True
 
     def _tensor_to_base64(self, image: torch.Tensor) -> str:
@@ -307,7 +309,7 @@ class GeminiImageGenerate:
 
         from ...common.http import post_with_retries
 
-        def _one_call(i: int) -> Image.Image:
+        def _one_call(i: int) -> tuple:
             # token minted once and shared (read-only headers); each call gets
             # its own transport retries via the pooled session
             resp = post_with_retries(url, headers, payload, timeout=600,
@@ -322,31 +324,41 @@ class GeminiImageGenerate:
             except (KeyError, IndexError, TypeError):
                 raise RuntimeError(
                     f"Unexpected response structure: {json.dumps(data)[:500]}")
+            usage = data.get("usageMetadata") or {}
             for part in parts_resp:
                 if "inlineData" in part:
                     raw = base64.b64decode(part["inlineData"]["data"])
-                    return Image.open(BytesIO(raw)).convert("RGB")
+                    return Image.open(BytesIO(raw)).convert("RGB"), usage
             raise RuntimeError(
                 f"No image in response parts: {[list(p.keys()) for p in parts_resp]}")
 
         if batch_size == 1:
-            pils = [_one_call(0)]
+            calls = [_one_call(0)]
         else:
             from concurrent.futures import ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=min(batch_size, 4)) as pool:
                 futs = [pool.submit(_one_call, i) for i in range(batch_size)]
-                results, errors = [], []
+                calls, errors = [], []
                 for f in futs:
                     try:
-                        results.append(f.result())
+                        calls.append(f.result())
                     except Exception as e:  # noqa: BLE001
                         errors.append(e)
-            if not results:
+            if not calls:
                 raise errors[0]
             if errors:
                 print(f"[Gemini] {len(errors)}/{batch_size} batch calls failed: "
                       f"{errors[0]}", flush=True)
-            pils = results
+        pils = [c[0] for c in calls]
+        usages = [c[1] for c in calls]
+        total_tokens = sum(u.get("totalTokenCount", 0) for u in usages)
+        usage_json = json.dumps({
+            "calls": len(usages),
+            "prompt_tokens": sum(u.get("promptTokenCount", 0) for u in usages),
+            "output_tokens": sum(u.get("candidatesTokenCount", 0) for u in usages),
+            "total_tokens": total_tokens,
+            "per_call": usages,
+        }, ensure_ascii=False)
 
         # stack into one IMAGE batch; identical aspect/resolution should give
         # identical dims, but resize stragglers to the first frame if not
@@ -359,101 +371,12 @@ class GeminiImageGenerate:
             frames.append(torch.from_numpy(arr))
         output_tensor = torch.stack(frames, dim=0)
 
-        return (output_tensor,)
-
-
-class GeminiComposite:
-    """Composite original image back onto Gemini output with feathered edges."""
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "generated_image": ("IMAGE",),
-                "original_image": ("IMAGE",),
-                "pad_left": ("INT", {"default": 0}),
-                "pad_top": ("INT", {"default": 0}),
-                "pad_right": ("INT", {"default": 0}),
-                "pad_bottom": ("INT", {"default": 0}),
-                "expand": ("INT", {"default": 4, "min": 0, "max": 64}),
-                "max_filter_size": ("INT", {"default": 3, "min": 3, "max": 15, "step": 2}),
-                "blur_radius": ("INT", {"default": 4, "min": 0, "max": 64}),
-            },
-        }
-
-    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE")
-    RETURN_NAMES = ("image", "outpaint_mask", "paste_mask")
-    FUNCTION = "composite"
-    CATEGORY = "jz/gemini"
-
-    def composite(
-        self,
-        generated_image: torch.Tensor,
-        original_image: torch.Tensor,
-        pad_left: int,
-        pad_top: int,
-        pad_right: int,
-        pad_bottom: int,
-        expand: int,
-        max_filter_size: int,
-        blur_radius: int,
-    ):
-        # Convert tensors to PIL
-        gen_np = (generated_image[0].cpu().numpy() * 255).astype(np.uint8)
-        gen_pil = Image.fromarray(gen_np)
-
-        orig_np = (original_image[0].cpu().numpy() * 255).astype(np.uint8)
-        orig_pil = Image.fromarray(orig_np)
-
-        tw, th = gen_pil.size
-        w, h = orig_pil.size
-
-        # Build outpaint mask at padded dimensions (white=padded, black=original)
-        outpaint_mask = Image.new("L", (tw, th), 255)
-        outpaint_mask.paste(0, (pad_left, pad_top, pad_left + w, pad_top + h))
-
-        # Dilate mask (grow padded area into original)
-        # Ensure odd kernel size
-        kernel = max_filter_size if max_filter_size % 2 == 1 else max_filter_size + 1
-        for _ in range(expand):
-            outpaint_mask = outpaint_mask.filter(ImageFilter.MaxFilter(kernel))
-
-        # Blur for feathered edges
-        if blur_radius > 0:
-            outpaint_mask = outpaint_mask.filter(
-                ImageFilter.GaussianBlur(radius=blur_radius)
-            )
-
-        # Invert: white=original area to keep, black=Gemini fills
-        inverted_mask = Image.eval(outpaint_mask, lambda x: 255 - x)
-
-        # Paste original onto Gemini result using feathered mask
-        gen_pil.paste(
-            orig_pil,
-            (pad_left, pad_top),
-            inverted_mask.crop((pad_left, pad_top, pad_left + w, pad_top + h)),
-        )
-
-        # Convert masks to tensors for debug output (grayscale -> RGB)
-        outpaint_mask_np = np.array(outpaint_mask).astype(np.float32) / 255.0
-        outpaint_mask_tensor = torch.from_numpy(outpaint_mask_np).unsqueeze(0).unsqueeze(-1).repeat(1, 1, 1, 3)
-
-        paste_mask_np = np.array(inverted_mask).astype(np.float32) / 255.0
-        paste_mask_tensor = torch.from_numpy(paste_mask_np).unsqueeze(0).unsqueeze(-1).repeat(1, 1, 1, 3)
-
-        # Convert back to tensor
-        out_np = np.array(gen_pil).astype(np.float32) / 255.0
-        out_tensor = torch.from_numpy(out_np).unsqueeze(0)
-
-        return (out_tensor, outpaint_mask_tensor, paste_mask_tensor)
+        return (output_tensor, usage_json, total_tokens)
 
 
 NODE_CLASS_MAPPINGS = {
     "GeminiImageGenerate": GeminiImageGenerate,
-    "GeminiComposite": GeminiComposite,
 }
-
 NODE_DISPLAY_NAME_MAPPINGS = {
     "GeminiImageGenerate": "Gemini Image Generate",
-    "GeminiComposite": "Gemini Composite",
 }

@@ -17,7 +17,7 @@ def _scalar(v, default=None):
 
 
 class jz_ResizeLongEdge:
-    CATEGORY = "jz/util"
+    CATEGORY = "jz/image"
     INPUT_IS_LIST = True
     OUTPUT_IS_LIST = (True, True)
     RETURN_TYPES = ("IMAGE", "INT")

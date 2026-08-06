@@ -46,7 +46,7 @@ def _resolve_api_key(node_input: str) -> str:
 class jz_OpenRouterVLM:
     """One call: system instruction + optional text + optional image batch -> text."""
 
-    CATEGORY = "jz/llm"
+    CATEGORY = "jz/api"
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("text", "cost")
     FUNCTION = "run"

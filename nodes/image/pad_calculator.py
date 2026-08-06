@@ -425,7 +425,7 @@ def unpad_image(padded_image: Image.Image, padding_info: dict) -> Image.Image:
     return padded_image.crop((left, top, right, bottom))
 
 
-class GeminiPadCalculator:
+class jz_PadCalculator:
     """Compute padding and produce padded image for Gemini outpainting."""
 
     @classmethod
@@ -473,7 +473,7 @@ class GeminiPadCalculator:
     )
 
     FUNCTION = "calculate"
-    CATEGORY = "jz/padding"
+    CATEGORY = "jz/image"
 
     def calculate(self, image, aspect_ratio: str, resolution: str, mode: str, fill_mode: str = "edge_average"):
         _, H, W, _ = image.shape
@@ -532,6 +532,7 @@ class GeminiPadCalculator:
         )
 
 
-NODE_CLASS_MAPPINGS = {"GeminiPadCalculator": GeminiPadCalculator}
+# key kept as "GeminiPadCalculator" so saved workflows still resolve
+NODE_CLASS_MAPPINGS = {"GeminiPadCalculator": jz_PadCalculator}
 
-NODE_DISPLAY_NAME_MAPPINGS = {"GeminiPadCalculator": "Gemini Pad Calculator"}
+NODE_DISPLAY_NAME_MAPPINGS = {"GeminiPadCalculator": "jz Pad Calculator"}

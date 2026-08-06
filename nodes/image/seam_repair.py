@@ -2,10 +2,8 @@
 Extra outpainting nodes that mirror the production RunPod worker
 (vermeer-runpod-outpainting) beyond what the base Gemini nodes cover:
 
-- GeminiFillSeamRepair: deterministically clean a thin leftover fill-color seam
+- jz_SeamRepair: deterministically clean a thin leftover fill-color seam
   at the canvas edge, replicating ``src/metrics.py::repair_fill_residue``.
-- GeminiPromptBuilder: fold a VLM scene description into the outpaint prompt,
-  replicating ``src/pipeline.py::build_prompt`` (fail-open to the plain prompt).
 
 Both are pure numpy/scipy so they carry no extra dependency beyond what the pad
 node already requires.
@@ -42,12 +40,12 @@ def _tensor_to_uint8(image: torch.Tensor) -> np.ndarray:
 
 
 def _fill_rgb_from_image(fill_color: torch.Tensor) -> tuple[int, int, int]:
-    """Sample the solid fill-color image (from GeminiPadCalculator) as RGB."""
+    """Sample the solid fill-color image (from jz Pad Calculator) as RGB."""
     px = (fill_color[0, 0, 0].cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
     return int(px[0]), int(px[1]), int(px[2])
 
 
-class GeminiFillSeamRepair:
+class jz_SeamRepair:
     """Clean a thin leftover fill-color seam at the outpaint canvas edge.
 
     Mirrors ``metrics.repair_fill_residue``: only acts when the *full-region*
@@ -74,7 +72,7 @@ class GeminiFillSeamRepair:
     RETURN_TYPES = ("IMAGE", "FLOAT")
     RETURN_NAMES = ("image", "residue")
     FUNCTION = "repair"
-    CATEGORY = "jz/gemini"
+    CATEGORY = "jz/image"
 
     def repair(
         self,
@@ -132,54 +130,6 @@ class GeminiFillSeamRepair:
         return (out, frac)
 
 
-class GeminiPromptBuilder:
-    """Fold a VLM scene description into the outpaint prompt.
-
-    Mirrors ``pipeline.build_prompt``: the description is injected as *context* on
-    the same "seamlessly extend" instruction — deliberately NOT as "preserve
-    exactly / no visible box" wording, which testing showed makes the model guard
-    the original as a rectangle and stamp the very box we want to avoid. When the
-    scene context is empty or an error string, it falls back to the plain prompt
-    (fail-open), so a describe outage never blocks a job.
-    """
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "scene_context": ("STRING", {"forceInput": True}),
-            }
-        }
-
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("prompt",)
-    FUNCTION = "build"
-    CATEGORY = "jz/gemini"
-
-    def build(self, scene_context: str):
-        ctx = (scene_context or "").strip()
-        if not ctx or any(ctx.startswith(m) for m in _ERROR_MARKERS):
-            return (PLAIN_PROMPT,)
-
-        prompt = (
-            "Image 1 has solid colored borders that need to be filled. Image 2 is a mask "
-            "where white areas need to be filled and black areas must remain unchanged. "
-            "Image 3 is the original image for reference.\n\n"
-            f"For context, the scene is: {ctx}\n\n"
-            "Seamlessly extend the scene into the bordered areas. Do not alter the "
-            "composition, subjects, or layout of the original content. Only generate new "
-            "content in the solid colored border regions. The generated content must blend "
-            "seamlessly at the boundary."
-        )
-        return (prompt,)
-
-
-NODE_CLASS_MAPPINGS = {
-    "GeminiFillSeamRepair": GeminiFillSeamRepair,
-    "GeminiPromptBuilder": GeminiPromptBuilder,
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "GeminiFillSeamRepair": "Gemini Fill Seam Repair",
-    "GeminiPromptBuilder": "Gemini Prompt Builder (scene-conditioned)",
-}
+# key kept as "GeminiFillSeamRepair" so saved workflows still resolve
+NODE_CLASS_MAPPINGS = {"GeminiFillSeamRepair": jz_SeamRepair}
+NODE_DISPLAY_NAME_MAPPINGS = {"GeminiFillSeamRepair": "jz Seam Repair"}
