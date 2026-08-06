@@ -10,7 +10,7 @@ when editing existing nodes, ONLY append widgets... so that old workflows still 
 
 - [jz/api](#jzapi) : jz Gemini Generate,  jz OpenRouter VLM, ...
 - [jz/image](#jzimage) : jz Composite Back, jz Seam Repair, jz Seam Carve, ...
-- [jz/util](#jzutil) : jz String Picker, jz Fallback, jz Switch, ...
+- [jz/util](#jzutil) : jz String Picker, jz Fallback, jz Switch, jz Display JSON, ...
 
 ## the nodes
 
@@ -67,3 +67,7 @@ note: forward energy algorithm will cut through flat uniform regions, protect th
 - **jz Switch (lazy if/else)**, boolean-driven: outputs `on_true` or `on_false` depending on `condition`, the other branch **never** executes. both branches are optional: if the selected one is not connected, downstream nodes are silently skipped (if true output the image, else output nothing)
 
 ![jz_switch](screenshots/jz_switch.png)
+
+- **jz Display JSON**, takes a string of json and renders it in the node as a collapsible syntax-highlighted tree (copy button included). invalid json shows a parse-error banner + the raw text instead of killing the run. the view survives save/reload, and the prettified string passes through as output
+
+![jz_display_json](screenshots/jz_display_json.png)
