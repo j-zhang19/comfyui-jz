@@ -101,7 +101,8 @@ class jz_OpenRouterVLM:
             for url in batch_to_data_urls(image, max_edge):
                 user_parts.append({"type": "image_url", "image_url": {"url": url}})
         if not user_parts:
-            user_parts.append({"type": "text", "text": ""})
+            raise ValueError("jz OpenRouter VLM: both image and content are "
+                             "empty — connect an image or pipe in some text")
 
         payload = {
             "model": model,

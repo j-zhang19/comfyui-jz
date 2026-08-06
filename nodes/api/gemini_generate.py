@@ -231,17 +231,6 @@ class jz_GeminiGenerate:
         if model == "custom" and custom_model:
             model = custom_model
 
-        # key resolution: widget > env var > pack-root .env (gitignored) —
-        # leave the widget empty to keep the key out of exported workflows
-        from ...common.secrets import get_secret
-        service_account_base64 = get_secret("SERVICE_ACCOUNT_BASE64",
-                                            service_account_base64)
-        if not service_account_base64:
-            raise RuntimeError(
-                "jz Gemini Generate: no service account — set the "
-                "service_account_base64 input, the SERVICE_ACCOUNT_BASE64 env "
-                "var, or SERVICE_ACCOUNT_BASE64= in comfyui-jz/.env")
-
         # Collect provided images. All slots are optional: with zero images this
         # is a pure text-to-image call. A connected-but-empty tensor (0 px, e.g.
         # an unselected LoadImage or an empty crop upstream) would crash the PNG
@@ -267,6 +256,21 @@ class jz_GeminiGenerate:
                 for frame in t:  # every batch frame becomes one image part
                     collected.append(frame.unsqueeze(0))
         images = collected
+
+        if not prompt.strip() and not images:
+            raise ValueError("jz Gemini Generate: both prompt and images are "
+                             "empty — fill the prompt or connect an image")
+
+        # key resolution: widget > env var > pack-root .env (gitignored) —
+        # leave the widget empty to keep the key out of exported workflows
+        from ...common.secrets import get_secret
+        service_account_base64 = get_secret("SERVICE_ACCOUNT_BASE64",
+                                            service_account_base64)
+        if not service_account_base64:
+            raise RuntimeError(
+                "jz Gemini Generate: no service account — set the "
+                "service_account_base64 input, the SERVICE_ACCOUNT_BASE64 env "
+                "var, or SERVICE_ACCOUNT_BASE64= in comfyui-jz/.env")
 
         # Build parts: text prompt + all images as inline_data
         parts = [{"text": prompt}]
