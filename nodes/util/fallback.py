@@ -33,15 +33,26 @@ class jz_Fallback:
                 "primary": (_ANY,),
                 "fallback": (_ANY, {"lazy": True}),
             },
+            "hidden": {
+                "dynprompt": "DYNPROMPT",
+                "unique_id": "UNIQUE_ID",
+            },
         }
 
-    def check_lazy_status(self, primary=None, fallback=None):
-        # only ask the executor to run the fallback branch when primary is absent
+    def check_lazy_status(self, primary=None, fallback=None,
+                          dynprompt=None, unique_id=None):
+        # only ask the executor to run the fallback branch when primary is
+        # absent — and only if fallback is actually connected (requesting an
+        # unconnected input is a hard NodeInputError)
         if primary is None and fallback is None:
+            if dynprompt is not None and unique_id is not None:
+                if "fallback" not in dynprompt.get_node(unique_id).get("inputs", {}):
+                    return []
             return ["fallback"]
         return []
 
-    def pick(self, primary=None, fallback=None):
+    def pick(self, primary=None, fallback=None,
+             dynprompt=None, unique_id=None):
         if primary is not None:
             return (primary, False)
         if fallback is None:

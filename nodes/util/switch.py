@@ -36,14 +36,25 @@ class jz_Switch:
                 "on_true": (_ANY, {"lazy": True}),
                 "on_false": (_ANY, {"lazy": True}),
             },
+            "hidden": {
+                "dynprompt": "DYNPROMPT",
+                "unique_id": "UNIQUE_ID",
+            },
         }
 
-    def check_lazy_status(self, condition, on_true=None, on_false=None):
-        # only the selected branch gets evaluated; the executor ignores
-        # names that are not connected
-        return ["on_true"] if condition else ["on_false"]
+    def check_lazy_status(self, condition, on_true=None, on_false=None,
+                          dynprompt=None, unique_id=None):
+        # requesting an unconnected input is a hard NodeInputError, and an
+        # unconnected socket is indistinguishable from an unevaluated lazy
+        # one here (both None) — so check the graph for an actual link
+        want = "on_true" if condition else "on_false"
+        if dynprompt is not None and unique_id is not None:
+            if want not in dynprompt.get_node(unique_id).get("inputs", {}):
+                return []
+        return [want]
 
-    def switch(self, condition, on_true=None, on_false=None):
+    def switch(self, condition, on_true=None, on_false=None,
+               dynprompt=None, unique_id=None):
         value = on_true if condition else on_false
         if value is None:
             # selected branch not connected -> mute everything downstream
