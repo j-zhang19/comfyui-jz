@@ -114,7 +114,7 @@ GLA_SCOPE = "https://www.googleapis.com/auth/generative-language"
 VERTEX_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 
 
-class GeminiImageGenerate:
+class jz_GeminiGenerate:
     """ComfyUI node for Gemini image generation via Vertex AI."""
 
     MODELS = [
@@ -238,7 +238,7 @@ class GeminiImageGenerate:
                                             service_account_base64)
         if not service_account_base64:
             raise RuntimeError(
-                "GeminiImageGenerate: no service account — set the "
+                "jz Gemini Generate: no service account — set the "
                 "service_account_base64 input, the SERVICE_ACCOUNT_BASE64 env "
                 "var, or SERVICE_ACCOUNT_BASE64= in comfyui-jz/.env")
 
@@ -374,9 +374,10 @@ class GeminiImageGenerate:
         return (output_tensor, usage_json, total_tokens)
 
 
+# key frozen: saved workflows reference "GeminiImageGenerate" — never change it
 NODE_CLASS_MAPPINGS = {
-    "GeminiImageGenerate": GeminiImageGenerate,
+    "GeminiImageGenerate": jz_GeminiGenerate,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "GeminiImageGenerate": "Gemini Image Generate",
+    "GeminiImageGenerate": "jz Gemini Generate",
 }
