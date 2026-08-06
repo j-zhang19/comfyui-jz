@@ -73,11 +73,17 @@ class jz_OpenRouterVLM:
                                                 "long edge before upload"}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 2**31 - 1,
                                  "control_after_generate": True}),
+                # appended last (append-only rule). reasoning models (gemini
+                # flash, o-series...) silently burn max_tokens on hidden
+                # thinking — cap it or answers come back truncated
+                "reasoning": (["default", "low", "medium", "high"],
+                              {"default": "low"}),
             },
         }
 
     def run(self, instruction, model, max_tokens, image=None, content="",
-            custom_model="", api_key="", max_edge=2048, seed=0):
+            custom_model="", api_key="", max_edge=2048, seed=0,
+            reasoning="low"):
         if model == "custom":
             if not custom_model.strip():
                 raise RuntimeError("model is 'custom' but custom_model is empty")
@@ -102,6 +108,8 @@ class jz_OpenRouterVLM:
             "seed": int(seed),
             "usage": {"include": True},
         }
+        if reasoning != "default":
+            payload["reasoning"] = {"effort": reasoning}
         headers = {
             "Authorization": f"Bearer {_resolve_api_key(api_key)}",
             "Content-Type": "application/json",
@@ -120,6 +128,10 @@ class jz_OpenRouterVLM:
             raise RuntimeError(f"OpenRouter returned no content: "
                                f"{truncate_b64(json.dumps(data))[:400]}")
 
+        if choices[0].get("finish_reason") == "length":
+            print("[jz vlm] WARNING: answer truncated (max_tokens hit — "
+                  "reasoning models eat tokens; raise max_tokens or lower "
+                  "the reasoning effort)", flush=True)
         text = choices[0]["message"]["content"].strip()
         cost = (data.get("usage") or {}).get("cost")
         cost_str = f"${cost:.4f}" if isinstance(cost, (int, float)) else "$?"
