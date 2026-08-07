@@ -58,6 +58,10 @@ note: forward energy algorithm will cut through flat uniform regions, protect th
 
 ![jz_edge_sizes](screenshots/jz_edge_sizes.png)
 
+- **jz Composite**, pastes a source image onto a destination at a named anchor (center, corners, edge midpoints) with x/y offset and a border margin. optional MASK blends the source through it (a 4-channel source blends through its own alpha). no scaling — resize upstream. raises if the source doesn't fit
+
+![jz_composite](screenshots/jz_composite.png)
+
 ### jz/util
 
 - **jz String Picker**, picks one string from a list (one per line or custom separator), random (seeded) or by wrapping index
