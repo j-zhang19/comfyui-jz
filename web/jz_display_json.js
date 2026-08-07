@@ -137,8 +137,8 @@ app.registerExtension({
         fontSize: "12px",
         lineHeight: "1.45",
         userSelect: "text",
-        width: "100%",
-        height: "100%",
+        maxWidth: "100%",
+        maxHeight: "100%",
         boxSizing: "border-box",
       });
       // copy button, appears on hover
@@ -166,9 +166,11 @@ app.registerExtension({
       wrap.appendChild(content);
       this._jz_content = content;
 
+      // default hideOnZoom (true): zoomed-out nodes draw a placeholder box —
+      // hideOnZoom:false skips the zoom transform on some frontend versions
+      // and the panel bleeds outside the node
       this.addDOMWidget("jz_json_view", "jz_json_view", wrap, {
         serialize: false,
-        hideOnZoom: false,
       });
       this.size = [Math.max(this.size[0], 320), Math.max(this.size[1], 220)];
       render(content, this.properties?.jz_json);
