@@ -18,7 +18,7 @@ when editing existing nodes, ONLY append widgets... so that old workflows still 
 
 custom nodes using https calls, with retries on 429/5xx response, the (api) keys are resolved **server-side** (either in an `.env` or a `config.ini`) and should never be stored in workflows!
 
-- **jz Gemini Generate**, *vertex* or *generativelanguage generateContent*. it works with zero images (text-to-image), single images, batches or a proper image list. when using `batch_size`, it fires **parallel calls** (shared token, with per-call retries). 
+- **jz Gemini Generate**, *vertex* or *generativelanguage generateContent*. it works with zero images (text-to-image), single images, batches or a proper image list. when using `batch_size`, it fires **parallel calls** (shared token, with per-call retries).
 the outputs are the image plus a usage summary and total token count. **api key is the base64 encoded service account, stored in the `.env` as `SERVICE_ACCOUNT_BASE64=...`**.
 
 ![jz_gemini_generate](screenshots/jz_gemini_generate.png)
@@ -53,6 +53,10 @@ plain image ops (often image in image out), no API involved
 note: forward energy algorithm will cut through flat uniform regions, protect the product with a mask when it matters!
 
 ![jz_seam_carve](screenshots/jz_seam_carve.png)
+
+- **jz Edge Sizes**, outputs the long and short edge of an image as INTs (width/height sorted, orientation-agnostic)
+
+![jz_edge_sizes](screenshots/jz_edge_sizes.png)
 
 ### jz/util
 
