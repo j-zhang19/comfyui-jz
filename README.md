@@ -1,6 +1,6 @@
 # comfyui-jz
 
-personal comfyui nodes, it sits in the `jz/` category so my nodes never mixes with the installed packs and they are easy to find.
+personal comfyui nodes, in `jz/` category so they never mixes with the installed packs + they are easy to find.
 
 when editing existing nodes, ONLY append widgets... so that old workflows still work
 
@@ -12,7 +12,7 @@ when editing existing nodes, ONLY append widgets... so that old workflows still 
 - [jz/image](#jzimage) : jz Composite Back, jz Seam Repair, jz Seam Carve, ...
 - [jz/util](#jzutil) : jz String Picker, jz Fallback, jz Switch, jz Display JSON, ...
 
-## the nodes
+## nodes
 
 ### jz/api
 
