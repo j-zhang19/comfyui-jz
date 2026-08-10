@@ -66,11 +66,18 @@ class jz_DoubleThreshold:
         if input_alpha is not None:
             if input_alpha.dim() == 2:
                 input_alpha = input_alpha.unsqueeze(0)
-            if input_alpha.shape[-2:] != luma.shape[-2:]:
+            # LoadImage emits a 64x64 constant placeholder mask when the
+            # image has no alpha channel — treat it as "no mask wired"
+            if (input_alpha.shape[-2:] == (64, 64)
+                    and luma.shape[-2:] != (64, 64)
+                    and (input_alpha == input_alpha.flatten()[0]).all()):
+                input_alpha = None
+            elif input_alpha.shape[-2:] != luma.shape[-2:]:
                 raise ValueError(
                     f"jz Double Threshold: input_alpha "
                     f"{input_alpha.shape[-1]}x{input_alpha.shape[-2]} does not "
                     f"match image {luma.shape[-1]}x{luma.shape[-2]}")
+        if input_alpha is not None:
             if invert_input_alpha:
                 input_alpha = 1.0 - input_alpha
             opacity = opacity * input_alpha
