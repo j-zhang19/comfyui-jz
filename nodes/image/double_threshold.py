@@ -35,9 +35,23 @@ class jz_DoubleThreshold:
                                    "step": 0.01,
                                    "tooltip": "luma at or above this -> white"}),
             },
+            # appended (append-only rule). LoadImage strips a PNG's alpha into
+            # its MASK output — wire it here so transparent input pixels stay
+            # transparent instead of being thresholded on their (black) RGB
+            "optional": {
+                "input_alpha": ("MASK", {"tooltip": "input transparency; "
+                                                    "LoadImage's MASK output "
+                                                    "goes here"}),
+                "invert_input_alpha": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "LoadImage masks are 1 = transparent; keep on "
+                               "when wiring that, turn off if your mask is "
+                               "1 = opaque"}),
+            },
         }
 
-    def threshold(self, image, low, high):
+    def threshold(self, image, low, high, input_alpha=None,
+                  invert_input_alpha=True):
         if low >= high:
             raise ValueError(f"jz Double Threshold: low ({low}) must be "
                              f"below high ({high})")
@@ -45,9 +59,25 @@ class jz_DoubleThreshold:
         r, g, b = image[..., 0], image[..., 1], image[..., 2]
         luma = _LUMA[0] * r + _LUMA[1] * g + _LUMA[2] * b
 
+        # input opacity: 4th image channel and/or the input_alpha socket
+        opacity = torch.ones_like(luma)
+        if image.shape[-1] == 4:
+            opacity = opacity * image[..., 3]
+        if input_alpha is not None:
+            if input_alpha.dim() == 2:
+                input_alpha = input_alpha.unsqueeze(0)
+            if input_alpha.shape[-2:] != luma.shape[-2:]:
+                raise ValueError(
+                    f"jz Double Threshold: input_alpha "
+                    f"{input_alpha.shape[-1]}x{input_alpha.shape[-2]} does not "
+                    f"match image {luma.shape[-1]}x{luma.shape[-2]}")
+            if invert_input_alpha:
+                input_alpha = 1.0 - input_alpha
+            opacity = opacity * input_alpha
+
         white = luma >= high
         black = luma <= low
-        alpha = (white | black).to(image.dtype)
+        alpha = (white | black).to(image.dtype) * opacity
 
         rgb = white.to(image.dtype).unsqueeze(-1).expand(-1, -1, -1, 3)
         rgba = torch.cat([rgb, alpha.unsqueeze(-1)], dim=-1).contiguous()
@@ -55,6 +85,7 @@ class jz_DoubleThreshold:
         trimap = torch.full_like(luma, 0.5)
         trimap[white] = 1.0
         trimap[black] = 0.0
+        trimap[opacity < 0.5] = 0.5  # input-transparent pixels stay undecided
 
         return (rgba, trimap, alpha)
 
