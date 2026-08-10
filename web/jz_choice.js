@@ -1,7 +1,7 @@
-// jz Choice — turns the `choice` text widget into a dropdown when the
-// `choices` input is wired to a node holding a literal string (primitive /
-// string-literal / jz nodes with a multiline items widget). The options are
-// re-read every time the dropdown opens, so edits upstream show up live.
+// jz Choice — swaps the `choice` text widget for a real combo (dropdown)
+// when the `choices` input is wired to a node holding a literal string
+// (primitive / string-literal / multiline text nodes). The option list is
+// re-read every time the dropdown opens, so upstream edits show up live.
 // If the upstream text can't be resolved (computed at runtime), the widget
 // stays a plain text field and the server validates the pick instead.
 
@@ -13,17 +13,19 @@ const SEPARATORS = { newline: "\n", comma: ",", semicolon: ";", pipe: "|" };
 function upstreamText(node) {
   const input = node.inputs?.find((i) => i.name === "choices");
   if (!input || input.link == null) return null;
-  const link = node.graph?.links?.[input.link];
-  if (!link) return null;
-  let origin = node.graph.getNodeById(link.origin_id);
-  // follow simple reroutes
+  const getLink = (id) => node.graph?.links?.get?.(id) ?? node.graph?.links?.[id];
+  let link = getLink(input.link);
+  let origin = link ? node.graph.getNodeById(link.origin_id) : null;
+  // follow simple pass-through nodes (reroutes)
   for (let hop = 0; hop < 5 && origin; hop++) {
-    const w = origin.widgets?.find((w) => typeof w.value === "string");
+    const w = origin.widgets?.find(
+      (w) => typeof w.value === "string" && (w.type === "text" || w.type === "customtext" || w.multiline)
+    ) ?? origin.widgets?.find((w) => typeof w.value === "string");
     if (w) return w.value;
     const up = origin.inputs?.[0];
     if (!up || up.link == null) break;
-    const l = node.graph.links?.[up.link];
-    origin = l ? node.graph.getNodeById(l.origin_id) : null;
+    link = getLink(up.link);
+    origin = link ? node.graph.getNodeById(link.origin_id) : null;
   }
   return null;
 }
@@ -41,36 +43,53 @@ app.registerExtension({
   beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "jz_Choice") return;
 
-    const refresh = function () {
-      const w = this.widgets?.find((w) => w.name === "choice");
-      if (!w) return;
-      if (w.__origType === undefined) w.__origType = w.type;
-      const text = upstreamText(this);
-      if (text !== null && parseChoices(this, text).length) {
-        w.type = "combo";
-        w.options = w.options || {};
-        // a function: re-evaluated each time the dropdown opens
-        w.options.values = () => {
-          const t = upstreamText(this);
-          return t !== null ? parseChoices(this, t) : [];
-        };
-      } else {
-        w.type = w.__origType;
-        if (w.options) delete w.options.values;
-      }
+    // replace the text widget with a fresh combo widget (mutating .type in
+    // place does not re-render on every frontend version)
+    const toCombo = function () {
+      const idx = this.widgets.findIndex((w) => w.name === "choice");
+      if (idx === -1 || this.widgets[idx].type === "combo") return;
+      const old = this.widgets[idx];
+      this.__jz_textWidget = old;
+      const valuesFn = () => {
+        const t = upstreamText(this);
+        return t !== null ? parseChoices(this, t) : [];
+      };
+      const combo = this.addWidget("combo", "choice", old.value, () => {}, { values: valuesFn });
+      this.widgets.pop(); // addWidget appended it
+      this.widgets.splice(idx, 1, combo);
       this.setDirtyCanvas(true, true);
+    };
+
+    const toText = function () {
+      const idx = this.widgets.findIndex((w) => w.name === "choice");
+      if (idx === -1 || this.widgets[idx].type !== "combo" || !this.__jz_textWidget) return;
+      this.__jz_textWidget.value = this.widgets[idx].value;
+      this.widgets.splice(idx, 1, this.__jz_textWidget);
+      this.setDirtyCanvas(true, true);
+    };
+
+    const refresh = function () {
+      const text = upstreamText(this);
+      if (text !== null && parseChoices(this, text).length) toCombo.call(this);
+      else toText.call(this);
     };
 
     const onConnectionsChange = nodeType.prototype.onConnectionsChange;
     nodeType.prototype.onConnectionsChange = function () {
       onConnectionsChange?.apply(this, arguments);
-      refresh.call(this);
+      // upstream node may not be in the graph yet during load
+      setTimeout(() => refresh.call(this), 0);
     };
 
     const onConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function () {
       onConfigure?.apply(this, arguments);
-      // graph links are live by now
+      setTimeout(() => refresh.call(this), 0);
+    };
+
+    const onAdded = nodeType.prototype.onAdded;
+    nodeType.prototype.onAdded = function () {
+      onAdded?.apply(this, arguments);
       setTimeout(() => refresh.call(this), 0);
     };
   },
