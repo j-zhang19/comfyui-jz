@@ -62,6 +62,10 @@ note: forward energy algorithm will cut through flat uniform regions, protect th
 
 ![jz_composite](screenshots/jz_composite.png)
 
+- **jz Double Threshold**, two-sided binarization: luma above `high` goes white, below `low` goes black, the band in between goes transparent. outputs the RGBA image (feeds jz Composite's alpha blending directly), a trimap MASK (1/0.5/0) and the decided-pixels alpha MASK
+
+![jz_double_threshold](screenshots/jz_double_threshold.png)
+
 ### jz/util
 
 - **jz String Picker**, picks one string from a list (one per line or custom separator), random (seeded) or by wrapping index
