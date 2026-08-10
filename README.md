@@ -83,3 +83,7 @@ note: forward energy algorithm will cut through flat uniform regions, protect th
 - **jz Display JSON**, takes a string of json and renders it in the node as a collapsible syntax-highlighted tree (copy button included). invalid json shows a parse-error banner + the raw text instead of killing the run. the view survives save/reload, and the prettified string passes through as output
 
 ![jz_display_json](screenshots/jz_display_json.png)
+
+- **jz Choice**, picks from a list of choices (STRING input, one per line or another separator) by NAME — reordering the list upstream never silently changes the pick, it either still matches or raises listing the options. when the choices come from a string-literal node, the `choice` widget turns into a real dropdown (live-refreshed); with runtime-computed choices it stays a text field. outputs the value and its index
+
+![jz_choice](screenshots/jz_choice.png)
