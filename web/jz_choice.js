@@ -70,6 +70,9 @@ app.registerExtension({
 
     const refresh = function () {
       const text = upstreamText(this);
+      console.debug("[jz choice v2]", text === null
+        ? "no literal text found upstream — keeping text field"
+        : `dropdown with ${parseChoices(this, text).length} options`);
       if (text !== null && parseChoices(this, text).length) toCombo.call(this);
       else toText.call(this);
     };
