@@ -137,9 +137,11 @@ class jz_OpenRouterVLM:
                                f"{truncate_b64(json.dumps(data))[:400]}")
 
         if choices[0].get("finish_reason") == "length":
-            print("[jz vlm] WARNING: answer truncated (max_tokens hit — "
-                  "reasoning models eat tokens; raise max_tokens or lower "
-                  "the reasoning effort)", flush=True)
+            # A half-written answer flows downstream and quietly poisons whatever
+            # consumes it, so this fails the run like any other error here.
+            raise RuntimeError(
+                "answer truncated (max_tokens hit — reasoning models eat tokens; "
+                "raise max_tokens or lower the reasoning effort)")
         text = choices[0]["message"]["content"].strip()
         if json_output and text.startswith("```"):
             # some models still wrap in ```json fences despite response_format
