@@ -13,8 +13,7 @@ Outputs:
 """
 import torch
 
-# BT.601 luma, same weighting as the seam carve node
-_LUMA = (0.299, 0.587, 0.114)
+from ...common.images import luma as _luma
 
 
 class jz_DoubleThreshold:
@@ -56,8 +55,7 @@ class jz_DoubleThreshold:
             raise ValueError(f"jz Double Threshold: low ({low}) must be "
                              f"below high ({high})")
 
-        r, g, b = image[..., 0], image[..., 1], image[..., 2]
-        luma = _LUMA[0] * r + _LUMA[1] * g + _LUMA[2] * b
+        luma = _luma(image)
 
         # input opacity: 4th image channel and/or the input_alpha socket
         opacity = torch.ones_like(luma)

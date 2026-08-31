@@ -7,11 +7,11 @@ import os
 import subprocess
 import tempfile
 import time
-import re
 from io import BytesIO
 from PIL import Image
 
 from ..image.pad_calculator import DIMENSION_MAP
+from ...common.nodes import scalar
 
 # The 10 values the API actually accepts, taken from the one dimension table so
 # they can't drift. pad_calculator's VALID_* lists are NOT reused: they lead with
@@ -267,24 +267,19 @@ class jz_GeminiGenerate:
     ):
         # INPUT_IS_LIST: scalars arrive as 1-element lists, image slots as
         # lists of tensors — unwrap the former, flatten the latter
-        def _scalar(v, default=None):
-            if isinstance(v, list):
-                return v[0] if v else default
-            return v if v is not None else default
-
-        prompt = _scalar(prompt)
-        service_account_base64 = _scalar(service_account_base64, "")
-        model = _scalar(model)
-        location = _scalar(location)
+        prompt = scalar(prompt)
+        service_account_base64 = scalar(service_account_base64, "")
+        model = scalar(model)
+        location = scalar(location)
         # a wired string beats the dropdown, and either way it is checked
         # against the API's own list before we spend a request on it
-        aspect_ratio = _pick("aspect_ratio", _scalar(aspect_ratio_in, ""),
-                             _scalar(aspect_ratio), ASPECT_RATIOS)
-        resolution = _pick("resolution", _scalar(resolution_in, ""),
-                           _scalar(resolution), RESOLUTIONS)
-        backend = _scalar(backend, "generativelanguage")
-        custom_model = _scalar(custom_model, "")
-        batch_size = max(1, int(_scalar(batch_size, 1)))
+        aspect_ratio = _pick("aspect_ratio", scalar(aspect_ratio_in, ""),
+                             scalar(aspect_ratio), ASPECT_RATIOS)
+        resolution = _pick("resolution", scalar(resolution_in, ""),
+                           scalar(resolution), RESOLUTIONS)
+        backend = scalar(backend, "generativelanguage")
+        custom_model = scalar(custom_model, "")
+        batch_size = max(1, int(scalar(batch_size, 1)))
 
         if model == "custom" and custom_model:
             model = custom_model
@@ -369,7 +364,7 @@ class jz_GeminiGenerate:
             "safetySettings": safety_settings,
         }
 
-        from ...common.http import post_with_retries
+        from ...common.http import post_with_retries, truncate_b64
 
         def _one_call(i: int) -> tuple:
             # token minted once and shared (read-only headers); each call gets
@@ -377,9 +372,8 @@ class jz_GeminiGenerate:
             resp = post_with_retries(url, headers, payload, timeout=600,
                                      tag=f"jz gemini {i + 1}/{batch_size}")
             if not resp.ok:
-                body = re.sub(r'"data"\s*:\s*"[A-Za-z0-9+/=]{100,}"',
-                              '"data": "<base64 truncated>"', resp.text)
-                raise RuntimeError(f"Gemini API error {resp.status_code}: {body[:500]}")
+                raise RuntimeError(f"Gemini API error {resp.status_code}: "
+                                   f"{truncate_b64(resp.text)[:500]}")
             data = resp.json()
             try:
                 parts_resp = data["candidates"][0]["content"]["parts"]

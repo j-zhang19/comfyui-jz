@@ -9,7 +9,8 @@ Blank entries are skipped. Raises if the list is empty.
 """
 import random
 
-_SEPARATORS = {"newline": "\n", "comma": ",", "semicolon": ";", "pipe": "|"}
+from ...common.nodes import SEPARATORS
+
 
 
 class jz_StringPicker:
@@ -35,12 +36,12 @@ class jz_StringPicker:
                                   "tooltip": "index mode: wraps around the list"}),
             },
             "optional": {
-                "separator": (list(_SEPARATORS), {"default": "newline"}),
+                "separator": (list(SEPARATORS), {"default": "newline"}),
             },
         }
 
     def pick(self, items, mode, seed, index, separator="newline"):
-        entries = [e.strip() for e in items.split(_SEPARATORS[separator])]
+        entries = [e.strip() for e in items.split(SEPARATORS[separator])]
         entries = [e for e in entries if e]
         if not entries:
             raise ValueError("jz String Picker: the items list is empty")

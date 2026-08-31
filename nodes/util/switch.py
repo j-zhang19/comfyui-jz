@@ -9,20 +9,12 @@ else output nothing").
 
 from comfy_execution.graph_utils import ExecutionBlocker
 
-
-class _AnyType(str):
-    """Equal to every type name — ComfyUI's wildcard socket convention."""
-
-    def __ne__(self, other):
-        return False
-
-
-_ANY = _AnyType("*")
+from ...common.nodes import ANY
 
 
 class jz_Switch:
     CATEGORY = "jz/util"
-    RETURN_TYPES = (_ANY,)
+    RETURN_TYPES = (ANY,)
     RETURN_NAMES = ("value",)
     FUNCTION = "switch"
 
@@ -33,8 +25,8 @@ class jz_Switch:
                 "condition": ("BOOLEAN", {"default": True}),
             },
             "optional": {
-                "on_true": (_ANY, {"lazy": True}),
-                "on_false": (_ANY, {"lazy": True}),
+                "on_true": (ANY, {"lazy": True}),
+                "on_false": (ANY, {"lazy": True}),
             },
             "hidden": {
                 "dynprompt": "DYNPROMPT",

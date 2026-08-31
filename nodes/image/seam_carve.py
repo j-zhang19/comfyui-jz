@@ -19,6 +19,8 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import torch
 
+from ...common.images import luma as _luma
+
 try:
     from numba import njit
     _HAS_NUMBA = True
@@ -26,10 +28,6 @@ except ImportError:  # numpy fallback keeps the node functional without numba
     _HAS_NUMBA = False
 
 _BIG = 1e6  # mask weight magnitude ("large" per the paper)
-
-
-def _luma(rgb: np.ndarray) -> np.ndarray:
-    return (0.299 * rgb[..., 0] + 0.587 * rgb[..., 1] + 0.114 * rgb[..., 2])
 
 
 def _backward_energy(rgb: np.ndarray, use_luma: bool) -> np.ndarray:

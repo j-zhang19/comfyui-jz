@@ -98,21 +98,6 @@ _COLORS_CANDIDATES = [
     (255, 0, 254),
 ]
 
-_COLOR_NAMES = {
-    (255, 0, 255): "magenta",
-    (0, 255, 0): "green",
-    (0, 255, 255): "cyan",
-    (255, 255, 0): "yellow",
-    (0, 0, 0): "black",
-    (255, 255, 255): "white",
-    (255, 0, 0): "red",
-    (0, 0, 255): "blue",
-    (128, 0, 128): "purple",
-    (0, 128, 128): "teal",
-    (128, 128, 0): "olive",
-}
-
-
 def get_edge_average_color(image: Image.Image, band: int = 10) -> tuple[int, int, int]:
     """Compute mean RGB from the outermost pixel band of the image."""
     pixels = np.array(image.convert("RGB"))
@@ -135,11 +120,6 @@ def get_edge_average_color(image: Image.Image, band: int = 10) -> tuple[int, int
 
     mean = edge_pixels.mean(axis=0).astype(np.uint8)
     return (int(mean[0]), int(mean[1]), int(mean[2]))
-
-
-def get_color_name(rgb: tuple[int, int, int]) -> str:
-    """Return a human-readable name for an RGB color, or a hex string if unknown."""
-    return _COLOR_NAMES.get(rgb, f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}")
 
 
 def get_all_dimensions():
@@ -213,20 +193,24 @@ def find_best_fit(W: int, H: int, mode: str = "superior") -> tuple[str, str]:
 def find_unique_fill_color(image: Image.Image) -> tuple[int, int, int]:
     """Find an RGB color not present in the image."""
     pixels = np.array(image.convert("RGB")).reshape(-1, 3)
-    packed = set(
-        pixels[:, 0].astype(np.uint32) << 16
-        | pixels[:, 1].astype(np.uint32) << 8
-        | pixels[:, 2].astype(np.uint32)
-    )
+    # 24-bit occupancy table: one vectorised scatter, 16 MB flat. Boxing every
+    # pixel into a python set costs ~2s and ~1 GB on a 4K image; this is ~0.03s.
+    seen = np.zeros(1 << 24, dtype=bool)
+    seen[pixels[:, 0].astype(np.uint32) << 16
+         | pixels[:, 1].astype(np.uint32) << 8
+         | pixels[:, 2].astype(np.uint32)] = True
 
     # Fast path: first candidate not in the image wins
     for r, g, b in _COLORS_CANDIDATES:
-        key = (r << 16) | (g << 8) | b
-        if key not in packed:
+        if not seen[(r << 16) | (g << 8) | b]:
             return (r, g, b)
 
-    # Slow path: all candidates present, find maximally distant color
-    unique = np.unique(pixels, axis=0).astype(np.float64)
+    # Slow path: all candidates present, find maximally distant color. Read the
+    # distinct colors straight out of the table — np.unique(pixels, axis=0)
+    # sorts all 16M rows and takes seconds for the same answer.
+    packed = np.flatnonzero(seen).astype(np.uint32)
+    unique = np.stack([packed >> 16, (packed >> 8) & 255, packed & 255],
+                      axis=1).astype(np.float64)
     tree = KDTree(unique)
 
     best_color: tuple[int, int, int] = _COLORS_CANDIDATES[0]
@@ -256,15 +240,13 @@ def find_unique_fill_color(image: Image.Image) -> tuple[int, int, int]:
         for idx in top_indices:
             center = grid[idx].astype(int)
             next_step = max(step // 4, 1)
-            for c in range(3):
-                lo = max(0, center[c] - radius)
-                hi = min(256, center[c] + radius + 1)
-                locals()[f"r{c}"] = np.arange(lo, hi, next_step)
+            fine_axes = [
+                np.arange(max(0, center[c] - radius),
+                          min(256, center[c] + radius + 1), next_step)
+                for c in range(3)
+            ]
             fine = (
-                np.stack(
-                    np.meshgrid(locals()["r0"], locals()["r1"], locals()["r2"]),
-                    axis=-1,
-                )
+                np.stack(np.meshgrid(*fine_axes), axis=-1)
                 .reshape(-1, 3)
                 .astype(np.float64)
             )
@@ -413,16 +395,6 @@ def pad_image(
         new_image = image.crop((crop_left, crop_top, crop_left + tw, crop_top + th))
 
     return new_image, padding_info
-
-
-def unpad_image(padded_image: Image.Image, padding_info: dict) -> Image.Image:
-    """Remove padding from an image using padding info."""
-    left = padding_info["pad_left"]
-    top = padding_info["pad_top"]
-    right = padding_info["target_width"] - padding_info["pad_right"]
-    bottom = padding_info["target_height"] - padding_info["pad_bottom"]
-
-    return padded_image.crop((left, top, right, bottom))
 
 
 class jz_PadCalculator:

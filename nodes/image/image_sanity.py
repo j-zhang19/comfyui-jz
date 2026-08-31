@@ -21,19 +21,11 @@ for jz Display JSON) and `all_ok` are scalars for whole-batch decisions.
 
 import json
 
-
-# BT.601 luma, same weighting as jz Double Threshold / jz Seam Carve
-_LUMA = (0.299, 0.587, 0.114)
+from ...common.images import luma as _luma
+from ...common.nodes import scalar
 
 # below this an alpha channel counts as fully transparent (float noise guard)
 _ALPHA_EPS = 1e-6
-
-
-def _scalar(v, default=None):
-    """INPUT_IS_LIST hands every widget over as a 1-element list — unwrap it."""
-    if isinstance(v, list):
-        return v[0] if v else default
-    return v if v is not None else default
 
 
 def _frames(v):
@@ -166,7 +158,7 @@ class jz_ImageSanity:
         rgb = frame[..., :3].float()
         # correction=0: population std, so a 1-px frame gives 0 rather than nan
         std = float(rgb.std(dim=(0, 1), correction=0).max())
-        luma = _LUMA[0] * rgb[..., 0] + _LUMA[1] * rgb[..., 1] + _LUMA[2] * rgb[..., 2]
+        luma = _luma(rgb)
         mean = float(luma.mean())
 
         # opacity: the 4th image channel and/or the wired mask
@@ -231,15 +223,15 @@ class jz_ImageSanity:
         invert_alpha=True,
     ):
         settings = {
-            "flat": bool(_scalar(check_flat, True)),
-            "min_std": float(_scalar(min_std, 0.01)),
-            "dark": bool(_scalar(check_dark, True)),
-            "min_mean": float(_scalar(min_mean, 0.02)),
-            "bright": bool(_scalar(check_bright, True)),
-            "max_mean": float(_scalar(max_mean, 0.98)),
-            "transparent": bool(_scalar(check_transparent, True)),
+            "flat": bool(scalar(check_flat, True)),
+            "min_std": float(scalar(min_std, 0.01)),
+            "dark": bool(scalar(check_dark, True)),
+            "min_mean": float(scalar(min_mean, 0.02)),
+            "bright": bool(scalar(check_bright, True)),
+            "max_mean": float(scalar(max_mean, 0.98)),
+            "transparent": bool(scalar(check_transparent, True)),
         }
-        invert = bool(_scalar(invert_alpha, True))
+        invert = bool(scalar(invert_alpha, True))
 
         frames = _frames(image)
         if not frames:

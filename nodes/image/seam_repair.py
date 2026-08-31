@@ -1,12 +1,8 @@
-"""
-Extra outpainting nodes that mirror the production RunPod worker
-(vermeer-runpod-outpainting) beyond what the base Gemini nodes cover:
+"""jz Seam Repair — clean a thin leftover fill-color seam at the canvas edge.
 
-- jz_SeamRepair: deterministically clean a thin leftover fill-color seam
-  at the canvas edge, replicating ``src/metrics.py::repair_fill_residue``.
-
-Both are pure numpy/scipy so they carry no extra dependency beyond what the pad
-node already requires.
+Mirrors the production RunPod worker (vermeer-runpod-outpainting), specifically
+``src/metrics.py::repair_fill_residue``. Pure numpy/scipy, so it carries no
+dependency beyond what the pad node already needs.
 """
 
 import numpy as np
@@ -14,24 +10,6 @@ import torch
 from PIL import Image
 from scipy import ndimage
 
-
-# ---------------------------------------------------------------------------
-# Plain outpaint prompt (identical to pipeline.PROMPT). Kept here so the
-# prompt-builder node is self-contained.
-# ---------------------------------------------------------------------------
-PLAIN_PROMPT = (
-    "Image 1 has solid colored borders that need to be filled. Image 2 is a mask "
-    "where white areas need to be filled and black areas must remain unchanged. "
-    "Image 3 is the original image for reference. Seamlessly extend the scene into "
-    "the bordered areas.\n\n"
-    "Do not alter the composition, subjects, or layout of the original content. "
-    "Only generate new content in the solid colored border regions. The generated "
-    "content must blend seamlessly at the boundary."
-)
-
-# Markers that indicate the VLM node returned an error string rather than a
-# description — treat these as "no description" so we fail open to PLAIN_PROMPT.
-_ERROR_MARKERS = ("Error:", "API Error", "Unexpected API response")
 
 
 def _tensor_to_uint8(image: torch.Tensor) -> np.ndarray:

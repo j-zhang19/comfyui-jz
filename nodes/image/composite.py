@@ -10,7 +10,6 @@ offset, with a margin that pads corner/edge anchors away from the borders.
 - no scaling here (resize upstream); raises if the source doesn't fully
   fit at the computed position
 """
-import torch
 
 ANCHORS = [
     "center",

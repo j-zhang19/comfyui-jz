@@ -9,20 +9,12 @@ fallback = the generation subgraph.
 Works with any type (image, latent, string, ...) via the wildcard trick.
 """
 
-
-class _AnyType(str):
-    """Equal to every type name — ComfyUI's wildcard socket convention."""
-
-    def __ne__(self, other):
-        return False
-
-
-_ANY = _AnyType("*")
+from ...common.nodes import ANY
 
 
 class jz_Fallback:
     CATEGORY = "jz/util"
-    RETURN_TYPES = (_ANY, "BOOLEAN")
+    RETURN_TYPES = (ANY, "BOOLEAN")
     RETURN_NAMES = ("value", "used_fallback")
     FUNCTION = "pick"
 
@@ -30,8 +22,8 @@ class jz_Fallback:
     def INPUT_TYPES(cls):
         return {
             "optional": {
-                "primary": (_ANY,),
-                "fallback": (_ANY, {"lazy": True}),
+                "primary": (ANY,),
+                "fallback": (ANY, {"lazy": True}),
             },
             "hidden": {
                 "dynprompt": "DYNPROMPT",

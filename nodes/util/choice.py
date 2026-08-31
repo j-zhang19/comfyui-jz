@@ -11,7 +11,8 @@ choices are wired from a node holding a literal string (a primitive /
 string-literal node); with runtime-computed choices it stays a text field.
 """
 
-_SEPARATORS = {"newline": "\n", "comma": ",", "semicolon": ";", "pipe": "|"}
+from ...common.nodes import SEPARATORS
+
 
 
 class jz_Choice:
@@ -33,12 +34,12 @@ class jz_Choice:
                                                  "one of the choices"}),
             },
             "optional": {
-                "separator": (list(_SEPARATORS), {"default": "newline"}),
+                "separator": (list(SEPARATORS), {"default": "newline"}),
             },
         }
 
     def pick(self, choices, choice, separator="newline"):
-        entries = [e.strip() for e in choices.split(_SEPARATORS[separator])]
+        entries = [e.strip() for e in choices.split(SEPARATORS[separator])]
         entries = [e for e in entries if e]
         if not entries:
             raise ValueError("jz Choice: the choices list is empty")
