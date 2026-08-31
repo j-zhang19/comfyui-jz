@@ -46,7 +46,7 @@ plain image ops (often image in image out), no API involved
 
 ![jz_pad_calculator](screenshots/jz_pad_calculator.png)
 
-- **jz Resize Long Edge (list)**, normalizes a list or batch of mixed-size images to one long edge, outputs a list (of images)
+- **jz Resize Long Edge (list)**, normalizes a list or batch of mixed-size images to one long edge, outputs a list (of images). `interpolation` picks the resample method (same five as jz Resize And Pad); a frame already at the target size is passed through untouched, and alpha is preserved
 
 ![jz_resize_long_edge](screenshots/jz_resize_long_edge.png)
 
@@ -69,6 +69,9 @@ note: forward energy algorithm will cut through flat uniform regions, protect th
 
 - **jz Image Sanity**, flags degenerate frames — empty (0 px, always checked), flat, too dark, too bright, fully transparent — each check toggleable with its own threshold. it **never raises** on a bad frame: it measures and reports, so you branch on `ok` with jz Switch / jz Fallback and decide yourself whether that means retry, substitute or skip.
 flatness is measured **per channel** (a flat red frame has channel stds of 0 but a whole-tensor std of ~0.47, so a single global std would call it textured). takes a batch or an image list, and the per-frame outputs (`image`, `ok`, `reason`, `std`, `mean`) are **lists** — one verdict per frame; `report` (json, feeds jz Display JSON) and `all_ok` are scalars for whole-batch decisions
+
+- **jz Resize And Pad**, comfyui's own *Resize And Pad Image* with the padding colour set free — it only offers white or black. same fit-and-centre (`min(tw/w, th/h)`, always scale to fit), but `padding_color` takes `#rrggbb` / `#rgb` / `black` / `white`, or wire a solid-colour image into `color_image` (jz Pad Calculator's `fill_color`) and it's sampled from there. also outputs the padding region as a **MASK** (1 = bar, 0 = image), and channels are preserved — an RGBA input stays RGBA with the padding opaque.
+note: `interpolation` defaults to `lanczos`, which round-trips through 8-bit in comfy's implementation; pick `area` or `bicubic` to stay in float. a frame that already matches the target is passed through untouched rather than resampled
 
 ### jz/util
 
