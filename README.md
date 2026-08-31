@@ -20,6 +20,7 @@ custom nodes using https calls, with retries on 429/5xx response, the (api) keys
 
 - **jz Gemini Generate**, *vertex* or *generativelanguage generateContent*. it works with zero images (text-to-image), single images, batches or a proper image list. when using `batch_size`, it fires **parallel calls** (shared token, with per-call retries).
 the outputs are the image plus a usage summary and total token count. **api key is the base64 encoded service account, stored in the `.env` as `SERVICE_ACCOUNT_BASE64=...`**.
+`aspect_ratio` and `resolution` are dropdowns, built from the same dimension table as jz Pad Calculator so they can't drift (minus `auto`, which is a pad-calculator fitting mode, not an api value). to drive them from a wire instead, use the `aspect_ratio_in` / `resolution_in` sockets — connected beats the dropdown, and the value is checked against the api's list before a request is spent on it
 
 ![jz_gemini_generate](screenshots/jz_gemini_generate.png)
 

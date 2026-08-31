@@ -11,6 +11,41 @@ import re
 from io import BytesIO
 from PIL import Image
 
+from ..image.pad_calculator import DIMENSION_MAP
+
+# The 10 values the API actually accepts, taken from the one dimension table so
+# they can't drift. pad_calculator's VALID_* lists are NOT reused: they lead with
+# "auto", which is a pad-calculator fitting mode and a 400 from Gemini.
+ASPECT_RATIOS = list(DIMENSION_MAP)
+RESOLUTIONS = list(next(iter(DIMENSION_MAP.values())))
+
+
+class _ComboAny(list):
+    """Combo options that still accept a wired STRING.
+
+    ComfyUI validates a link with `received_type != input_type` and gives up on
+    a plain list (`if not isinstance(input_type, str): return False`), so a
+    dropdown normally refuses every incoming wire — which would break saved
+    workflows that feed jz Pad Calculator's aspect_ratio / resolution here.
+    An always-equal __ne__ (the wildcard trick jz Switch / jz Fallback use)
+    keeps those links valid, and serializes to /object_info exactly like a
+    plain list so the frontend draws an ordinary dropdown.
+
+    The cost: it accepts ANY type, so _pick() re-validates at run time.
+    """
+
+    def __ne__(self, other):
+        return False
+
+
+def _pick(name: str, wired, widget, valid: list) -> str:
+    """A connected string overrides the dropdown; validate before the API sees it."""
+    value = wired.strip() if isinstance(wired, str) and wired.strip() else widget
+    if not isinstance(value, str) or value not in valid:
+        raise ValueError(f"jz Gemini Generate: {name} {str(value)[:80]!r} is not "
+                         f"one of {', '.join(valid)}")
+    return value
+
 
 
 def _get_access_token(
@@ -140,8 +175,12 @@ class jz_GeminiGenerate:
                 "service_account_base64": ("STRING", {"default": ""}),
                 "model": (cls.MODELS + ["custom"], {"default": cls.MODELS[0]}),
                 "location": ("STRING", {"default": "us-central1"}),
-                "aspect_ratio": ("STRING", {"default": "1:1"}),
-                "resolution": ("STRING", {"default": "1K"}),
+                # dropdowns, but _ComboAny so an already-wired STRING (jz Pad
+                # Calculator's outputs) keeps validating. To wire a NEW one use
+                # the aspect_ratio_in / resolution_in sockets appended below —
+                # the frontend may refuse to draw a link into a combo socket.
+                "aspect_ratio": (_ComboAny(ASPECT_RATIOS), {"default": "1:1"}),
+                "resolution": (_ComboAny(RESOLUTIONS), {"default": "1K"}),
                 # Cache-buster only: NOT sent to Gemini (the REST API has no seed).
                 # ComfyUI caches a node whose inputs are unchanged, so with fixed
                 # params it would never re-call the API. A changing seed changes the
@@ -169,6 +208,19 @@ class jz_GeminiGenerate:
                                        "tooltip": "N parallel API calls -> N "
                                                   "images out (one shared "
                                                   "token, per-call retries)"}),
+                # appended (append-only rule). A socket you can definitely wire
+                # a STRING into, unlike the combos above; connected wins over
+                # the dropdown.
+                "aspect_ratio_in": ("STRING", {
+                    "forceInput": True, "default": "",
+                    "tooltip": "overrides the aspect_ratio dropdown when "
+                               "connected — e.g. jz Pad Calculator's "
+                               "aspect_ratio output"}),
+                "resolution_in": ("STRING", {
+                    "forceInput": True, "default": "",
+                    "tooltip": "overrides the resolution dropdown when "
+                               "connected — e.g. jz Pad Calculator's "
+                               "resolution output"}),
             },
         }
 
@@ -210,6 +262,8 @@ class jz_GeminiGenerate:
         image_10: torch.Tensor = None,
         images=None,
         batch_size: int = 1,
+        aspect_ratio_in: str = "",
+        resolution_in: str = "",
     ):
         # INPUT_IS_LIST: scalars arrive as 1-element lists, image slots as
         # lists of tensors — unwrap the former, flatten the latter
@@ -222,8 +276,12 @@ class jz_GeminiGenerate:
         service_account_base64 = _scalar(service_account_base64, "")
         model = _scalar(model)
         location = _scalar(location)
-        aspect_ratio = _scalar(aspect_ratio)
-        resolution = _scalar(resolution)
+        # a wired string beats the dropdown, and either way it is checked
+        # against the API's own list before we spend a request on it
+        aspect_ratio = _pick("aspect_ratio", _scalar(aspect_ratio_in, ""),
+                             _scalar(aspect_ratio), ASPECT_RATIOS)
+        resolution = _pick("resolution", _scalar(resolution_in, ""),
+                           _scalar(resolution), RESOLUTIONS)
         backend = _scalar(backend, "generativelanguage")
         custom_model = _scalar(custom_model, "")
         batch_size = max(1, int(_scalar(batch_size, 1)))
