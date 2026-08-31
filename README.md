@@ -66,6 +66,9 @@ note: forward energy algorithm will cut through flat uniform regions, protect th
 
 ![jz_double_threshold](screenshots/jz_double_threshold.png)
 
+- **jz Image Sanity**, flags degenerate frames — empty (0 px, always checked), flat, too dark, too bright, fully transparent — each check toggleable with its own threshold. it **never raises** on a bad frame: it measures and reports, so you branch on `ok` with jz Switch / jz Fallback and decide yourself whether that means retry, substitute or skip.
+flatness is measured **per channel** (a flat red frame has channel stds of 0 but a whole-tensor std of ~0.47, so a single global std would call it textured). takes a batch or an image list, and the per-frame outputs (`image`, `ok`, `reason`, `std`, `mean`) are **lists** — one verdict per frame; `report` (json, feeds jz Display JSON) and `all_ok` are scalars for whole-batch decisions
+
 ### jz/util
 
 - **jz String Picker**, picks one string from a list (one per line or custom separator), random (seeded) or by wrapping index
