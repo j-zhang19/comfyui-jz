@@ -143,6 +143,17 @@ def get_dimensions(aspect_ratio: str, resolution: str) -> tuple[int, int]:
 VALID_FIT_MODES = ["superior", "inferior", "closest"]
 
 
+def aspect_distance(tw: int, th: int, W: int, H: int) -> float:
+    """Shape mismatch between a candidate and the image; 1.0 means identical.
+
+    Scale-free and symmetric. Area cannot stand in for this: w*h == h*w, so an
+    area-only score cannot tell an aspect ratio from its own transpose, and
+    "closest" answered 16:9 for every portrait 9:16 image.
+    """
+    r = (tw / max(th, 1)) / (W / max(H, 1))
+    return max(r, 1.0 / r) if r > 0 else float("inf")
+
+
 def find_best_fit(W: int, H: int, mode: str = "superior") -> tuple[str, str]:
     """Find best supported dimension for the image.
 
@@ -181,7 +192,9 @@ def find_best_fit(W: int, H: int, mode: str = "superior") -> tuple[str, str]:
         if not candidates:
             raise ValueError("No supported dimensions available.")
         img_area = W * H
-        candidates.sort(key=lambda x: abs(x[0] * x[1] - img_area))
+        # shape first, then size — area alone confuses a ratio with its transpose
+        candidates.sort(key=lambda x: (aspect_distance(x[0], x[1], W, H),
+                                       abs(x[0] * x[1] - img_area)))
 
     else:
         raise ValueError(f"Invalid mode '{mode}'. Valid: {VALID_FIT_MODES}")
@@ -303,7 +316,10 @@ def calculate_padding(
                         (-tw * th, api_ratio)
                     )  # negative so sort picks largest
                 elif mode == "closest":
-                    candidates.append((abs(tw * th - img_area), api_ratio))
+                    # shape first, then size (see aspect_distance)
+                    candidates.append(
+                        ((aspect_distance(tw, th, W, H),
+                          abs(tw * th - img_area)), api_ratio))
         if not candidates:
             raise ValueError(
                 f"No matching dimension for image {W}x{H} at {resolution} in mode '{mode}'."
