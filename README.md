@@ -73,6 +73,9 @@ flatness is measured **per channel** (a flat red frame has channel stds of 0 but
 - **jz Resize And Pad**, comfyui's own *Resize And Pad Image* with the padding colour set free — it only offers white or black. same fit-and-centre (`min(tw/w, th/h)`, always scale to fit), but `padding_color` takes `#rrggbb` / `#rgb` / `black` / `white`, or wire a solid-colour image into `color_image` (jz Pad Calculator's `fill_color`) and it's sampled from there. also outputs the padding region as a **MASK** (1 = bar, 0 = image), and channels are preserved — an RGBA input stays RGBA with the padding opaque.
 note: `interpolation` defaults to `lanczos`, which round-trips through 8-bit in comfy's implementation; pick `area` or `bicubic` to stay in float. a frame that already matches the target is passed through untouched rather than resampled
 
+- **jz Resolution Selector**, aspect ratio → width/height. comfyui's core *Resolution Selector* labels its options `16:9 (Widescreen)` and takes a **COMBO**, which no STRING output can connect to — so it can't be driven from jz Pad Calculator. this one uses plain ratios, and `aspect_ratio_in` is a STRING socket you can actually wire (connected beats the dropdown; it also accepts the core node's parenthesised form).
+`mode` picks how the size is computed: `table` returns the exact dimensions gemini emits (straight from the same DIMENSION_MAP as jz Pad Calculator, 10 ratios — core has 8, this adds `4:5` and `5:4`), `megapixels` uses core's own formula for any ratio and any target. they differ slightly on purpose: 16:9 at 1 MP is `1368x768` by the formula but `1376x768` in the table
+
 ### jz/util
 
 - **jz String Picker**, picks one string from a list (one per line or custom separator), random (seeded) or by wrapping index
