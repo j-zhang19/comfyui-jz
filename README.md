@@ -76,6 +76,9 @@ note: `interpolation` defaults to `lanczos`, which round-trips through 8-bit in 
 - **jz Resolution Selector**, aspect ratio → width/height. comfyui's core *Resolution Selector* labels its options `16:9 (Widescreen)` and takes a **COMBO**, which no STRING output can connect to — so it can't be driven from jz Pad Calculator. this one uses plain ratios, and `aspect_ratio_in` is a STRING socket you can actually wire (connected beats the dropdown; it also accepts the core node's parenthesised form).
 `mode` picks how the size is computed: `table` returns the exact dimensions gemini emits (straight from the same DIMENSION_MAP as jz Pad Calculator, 10 ratios — core has 8, this adds `4:5` and `5:4`), `megapixels` uses core's own formula for any ratio and any target. they differ slightly on purpose: 16:9 at 1 MP is `1368x768` by the formula but `1376x768` in the table
 
+- **jz Before/After Slider**, animates a wipe between two images: a divider sweeps across revealing `after` over `before`, holds, sweeps back — so the batch **loops seamlessly**. outputs the frames as an IMAGE batch (plus `frame_count` and `fps`), so you pick the encoder: `VHS_VideoCombine` for a gif, or core's `SaveAnimatedWEBP` / `SaveAnimatedPNG` / `SaveWEBM`. frames stay editable, so you can composite a caption on them first.
+timing is two numbers — `sweep_seconds` and `hold_seconds` (the start-end hold is split across the loop seam, so a looping player dwells equally at both ends). `scale` resizes both inputs first: it's the lever on output size, and the handle scales with it (`1.0` skips resampling entirely). `orientation` switches to a horizontal divider. mismatched input sizes raise — match them with jz Resize And Pad
+
 ### jz/util
 
 - **jz String Picker**, picks one string from a list (one per line or custom separator), random (seeded) or by wrapping index
