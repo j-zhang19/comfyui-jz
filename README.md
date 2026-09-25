@@ -30,6 +30,11 @@ the `reasoning` widget defaults to `low` (reasoning models otherwise burn `max_t
 
 ![jz_openrouter_vlm](screenshots/jz_openrouter_vlm.png)
 
+- **jz OpenRouter Image**, image **generation and editing** through openrouter. a separate node from the VLM one because it's a different api, not a mode of it: `POST /api/v1/images` (not `/chat/completions`), a `prompt`/`n`/`aspect_ratio`/`resolution` body, images back as `data[].b64_json`, and its own model catalogue at `/api/v1/images/models` that doesn't overlap `/api/v1/models`.
+wire an IMAGE in and every frame becomes an `input_references` entry — that's how editing / img2img works here. outputs the IMAGE batch plus the cost and a usage json.
+**`auto` on a widget omits that field entirely** rather than sending a default: supported parameters vary sharply per model — `resolution` doesn't exist on `gpt-5-image` or `flux.2-pro`, `n` caps at 1 for most models but 10 for `gpt-5-image`, `seed` is unsupported on `gemini-3-pro-image`. **api key is shared with the VLM node** (`[API] OPENROUTER_API_KEY` in `config.ini`).
+**watch the cost**: these models bill per output *token*, not per image. a 1024x1024 from `gpt-5-image-mini` (the cheapest) is ~4160 image tokens ≈ **$0.033** — the per-token figure in openrouter's model listing looks tiny but multiplies fast, and the bigger models are ~15x that. the `cost` output reports what each call actually charged
+
 ### jz/image
 
 plain image ops (often image in image out), no API involved

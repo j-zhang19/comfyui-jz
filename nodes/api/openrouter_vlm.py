@@ -9,16 +9,13 @@ Differences from the vermeer node this replaces:
 - the whole IMAGE batch is sent: batch of N frames = N images in the call
 - API key: node input > OPENROUTER_API_KEY env > config.ini next to pack
 """
-import configparser
 import json
-import os
-from pathlib import Path
 
 from ...common.http import post_with_retries, truncate_b64
 from ...common.images import batch_to_data_urls
+from ...common.secrets import openrouter_key
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-_PACK_ROOT = Path(__file__).resolve().parents[2]
 
 MODELS = [
     "anthropic/claude-opus-4.8",
@@ -26,21 +23,6 @@ MODELS = [
     "google/gemini-3.1-flash-lite-preview",
     "custom",
 ]
-
-
-def _resolve_api_key(node_input: str) -> str:
-    if node_input.strip():
-        return node_input.strip()
-    if os.environ.get("OPENROUTER_API_KEY", "").strip():
-        return os.environ["OPENROUTER_API_KEY"].strip()
-    cfg = configparser.ConfigParser(interpolation=None)
-    cfg.read(str(_PACK_ROOT / "config.ini"), encoding="utf-8")
-    key = cfg.get("API", "OPENROUTER_API_KEY", fallback="").strip()
-    if not key:
-        raise RuntimeError(
-            "No OpenRouter key: set the api_key input, the OPENROUTER_API_KEY "
-            "env var, or [API] OPENROUTER_API_KEY in comfyui-jz/config.ini (pack root)")
-    return key
 
 
 class jz_OpenRouterVLM:
@@ -119,7 +101,7 @@ class jz_OpenRouterVLM:
         if json_output:
             payload["response_format"] = {"type": "json_object"}
         headers = {
-            "Authorization": f"Bearer {_resolve_api_key(api_key)}",
+            "Authorization": f"Bearer {openrouter_key(api_key)}",
             "Content-Type": "application/json",
         }
 
