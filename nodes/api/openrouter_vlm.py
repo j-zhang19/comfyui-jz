@@ -13,11 +13,14 @@ import json
 
 from ...common.http import post_with_retries, truncate_b64
 from ...common.images import batch_to_data_urls
+from ...common.openrouter import model_ids
 from ...common.secrets import openrouter_key
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-MODELS = [
+# curated favourites; model_ids() appends the rest of the live catalogue when
+# a cached copy is available, and falls back to exactly this list otherwise
+CURATED = [
     "anthropic/claude-opus-4.8",
     "google/gemini-3.5-flash",
     "google/gemini-3.1-flash-lite-preview",
@@ -39,7 +42,8 @@ class jz_OpenRouterVLM:
             "required": {
                 "instruction": ("STRING", {"multiline": True,
                                            "default": "describe this image in detail"}),
-                "model": (MODELS, {"default": "google/gemini-3.5-flash"}),
+                "model": (model_ids("chat", CURATED),
+                          {"default": "google/gemini-3.5-flash"}),
                 "max_tokens": ("INT", {"default": 1000, "min": 1, "max": 32768}),
             },
             "optional": {

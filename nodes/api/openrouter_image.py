@@ -24,15 +24,15 @@ from PIL import Image
 
 from ...common.http import post_with_retries, truncate_b64
 from ...common.images import batch_to_data_urls
+from ...common.openrouter import model_ids
 from ...common.secrets import openrouter_key
 
 OPENROUTER_IMAGE_URL = "https://openrouter.ai/api/v1/images"
 
-# curated from /api/v1/images/models. hardcoded rather than fetched because
-# INPUT_TYPES() runs on every /object_info request and a network call there
-# would stall ComfyUI startup whenever OpenRouter is slow; "custom" covers the
-# rest of the catalogue.
-MODELS = [
+# curated favourites, always first in the dropdown. model_ids() appends the
+# rest of the live catalogue from a background-refreshed cache, and falls back
+# to exactly this list when there is none.
+CURATED = [
     "google/gemini-3-pro-image",
     "google/gemini-3.1-flash-image",
     "google/gemini-3.1-flash-lite-image",
@@ -82,7 +82,7 @@ class jz_OpenRouterImage:
             "required": {
                 "prompt": ("STRING", {"multiline": True,
                                       "default": "a photo of a cute dog"}),
-                "model": (MODELS, {"default": MODELS[0]}),
+                "model": (model_ids("image", CURATED), {"default": CURATED[0]}),
                 "aspect_ratio": (ASPECT_RATIOS, {
                     "default": "auto",
                     "tooltip": "auto omits the field — models support "
