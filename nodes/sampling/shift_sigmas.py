@@ -74,8 +74,9 @@ class jz_ShiftSigmas:
             return max(1, round(width / 16) * round(height / 16))
         s = latent["samples"]
         # a latent is stored at its own downscale ratio; rescale to the /16 grid.
-        # the key is optional, and assuming /16 when it is absent is how the
-        # original overcounts a plain /8 EmptyLatentImage by 4x
+        # EmptyLatentImage sets this key to 8, so the fallback is only reached
+        # for a latent from some other source — where assuming /16 would
+        # overcount a /8 latent 4x, hence the tokens output to check against
         ratio = latent.get("downscale_ratio_spacial") or 16
         r = ratio / 16
         return max(1, round(s.shape[-2] * r) * round(s.shape[-1] * r))
