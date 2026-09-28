@@ -11,6 +11,7 @@ when editing existing nodes, ONLY append widgets... so that old workflows still 
 - [jz/api](#jzapi) : jz Gemini Generate,  jz OpenRouter VLM, ...
 - [jz/image](#jzimage) : jz Composite Back, jz Seam Repair, jz Seam Carve, ...
 - [jz/util](#jzutil) : jz String Picker, jz Fallback, jz Switch, jz Display JSON, ...
+- [jz/sampling](#jzsampling) : jz Shift Sigmas, ...
 
 ## nodes
 
@@ -84,6 +85,14 @@ note: `interpolation` defaults to `lanczos`, which round-trips through 8-bit in 
 
 - **jz Before/After Slider**, animates a wipe between two images: a divider sweeps across revealing `after` over `before`, holds, sweeps back — so the batch **loops seamlessly**. outputs the frames as an IMAGE batch (plus `frame_count` and `fps`), so you pick the encoder: `VHS_VideoCombine` for a gif, or core's `SaveAnimatedWEBP` / `SaveAnimatedPNG` / `SaveWEBM`. frames stay editable, so you can composite a caption on them first.
 timing is two numbers — `sweep_seconds` and `hold_seconds` (the start-end hold is split across the loop seam, so a looping player dwells equally at both ends). `scale` resizes both inputs first: it's the lever on output size, and the handle scales with it (`1.0` skips resampling entirely). `orientation` switches to a horizontal divider. mismatched input sizes raise — match them with jz Resize And Pad
+
+### jz/sampling
+
+- **jz Shift Sigmas (flow match)**, applies the resolution-dependent shift that flow-match models use, to a SIGMAS tensor:
+`mu = base_shift + (max_shift - base_shift) * (tokens - min_tok) / (max_tok - min_tok)`, then `sigma = e^mu / (e^mu + 1/t - 1)`, with `tokens = (W/16) * (H/16)`.
+comfyui has both halves but never the combination — `ManualSigmas` emits explicit sigmas with **no** shift, and `ModelSamplingFlux` computes the identical mu (and the identical token count) but patches the **MODEL**, not a SIGMAS output. so there's no built-in way to take a schedule and shift it; this is that missing step.
+one node covers the families, which differ only in constants: **flux** `max_shift 1.15, max_tokens 4096`, **qwen-image** `max_shift 0.9, max_tokens 8192`. wire `ManualSigmas` -> this -> `SamplerCustom`; with `1.0, 0.9375, 0.875, 0.75, 0.5, 0.25` it reproduces qwen-image viggle-turbo exactly.
+resolution comes from the `width`/`height` widgets, or from a connected LATENT (which uses the latent's own `downscale_ratio_spacial`). the `mu` and `tokens` outputs are there because a wrong token count is otherwise *silently* wrong. `append_zero` adds the terminal 0 samplers need, since `ManualSigmas` doesn't
 
 ### jz/util
 
