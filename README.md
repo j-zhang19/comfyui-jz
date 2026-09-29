@@ -1,23 +1,52 @@
 # comfyui-jz
 
-personal comfyui nodes, in `jz/` category so they never mixes with the installed packs + they are easy to find.
+personal comfyui nodes, in the `jz/` category so they never mix with the installed packs + they are easy to find. **24 nodes.**
 
-when editing existing nodes, ONLY append widgets... so that old workflows still work
+when editing existing nodes, ONLY append widgets and outputs... so that old workflows still work. node **keys** are frozen too — a few still read `Gemini*` for that reason.
 
 ---
 
 ## contents
 
-- [jz/api](#jzapi) : jz Gemini Generate,  jz OpenRouter VLM, ...
-- [jz/image](#jzimage) : jz Composite Back, jz Seam Repair, jz Seam Carve, ...
-- [jz/util](#jzutil) : jz String Picker, jz Fallback, jz Switch, jz Display JSON, ...
-- [jz/sampling](#jzsampling) : jz Shift Sigmas, ...
+- [jz/api](#jzapi) (6) : Gemini Generate · OpenRouter VLM · OpenRouter Image · BytePlus Seedream · BytePlus Seedance · BytePlus Seedance Fetch
+- [jz/image](#jzimage) (12) : Composite · Composite Back · Double Threshold · Edge Sizes · Image Sanity · Pad Calculator · Resize And Pad · Resize Long Edge · Resolution Selector · Seam Carve · Seam Repair · Before/After Slider
+- [jz/sampling](#jzsampling) (1) : Shift Sigmas
+- [jz/util](#jzutil) (5) : Choice · Display JSON · Fallback · String Picker · Switch
+- [layout](#layout) : how the package is put together
+
+## layout
+
+`__init__.py` auto-discovers every `nodes/**/*.py` that exports `NODE_CLASS_MAPPINGS`, so **adding a node is dropping a file** — nothing to register. Files starting with `_` are skipped.
+
+shared code lives in `common/` (never auto-discovered):
+
+| module | |
+|---|---|
+| `secrets.py` | `resolve_key()` — every provider key resolves the same way: node input → env var → `.env` → `config.ini`. `openrouter_key()` / `byteplus_key()` are four-line adapters |
+| `http.py` | pooled session, status-aware retries (408/429/5xx + Retry-After), `truncate_b64` for sane error messages |
+| `images.py` | tensor ↔ PIL ↔ base64/data-URL, `pils_to_batch`, BT.601 `luma`, the shared `INTERPOLATION` list |
+| `nodes.py` | node-authoring helpers: `AnyType`/`ANY` wildcard sockets, `ComboAny`, `scalar()` for `INPUT_IS_LIST`, `SEPARATORS`, `format_usd` |
+| `model_cache.py` | model dropdowns served instantly from a 24h cache, refreshed on a background thread — `INPUT_TYPES()` never blocks on the network |
+| `openrouter.py` / `byteplus.py` | the per-provider adapters over that cache, plus each API's request shape |
+| `gemini_dims.py` | the aspect-ratio × resolution → exact-size table, shared by three nodes |
+| `fill_color.py` | padding-colour search (edge-average, and a colour provably absent from the image) |
+| `google_auth.py` | service account → OAuth2 token |
+
+`web/` holds the frontend extensions (`jz_choice.js`, `jz_display_json.js`).
 
 ## nodes
 
 ### jz/api
 
-custom nodes using https calls, with retries on 429/5xx response, the (api) keys are resolved **server-side** (either in an `.env` or a `config.ini`) and should never be stored in workflows!
+custom nodes using https calls, with retries on 429/5xx responses.
+
+**keys are resolved server-side and must never be stored in workflows.** every node resolves the same way — the `api_key` widget (leave it empty!) → environment variable → `.env` at the pack root → `config.ini`. both files are gitignored:
+
+| provider | env / `.env` | `config.ini` |
+|---|---|---|
+| openrouter | `OPENROUTER_API_KEY` | `[API] OPENROUTER_API_KEY` |
+| byteplus | `BYTEPLUS_API_KEY` or `ARK_API_KEY` | `[BYTEDANCE] ARK_API_KEY` |
+| gemini | `SERVICE_ACCOUNT_BASE64` (base64 of the service-account json) | — |
 
 - **jz Gemini Generate**, *vertex* or *generativelanguage generateContent*. it works with zero images (text-to-image), single images, batches or a proper image list. when using `batch_size`, it fires **parallel calls** (shared token, with per-call retries).
 the outputs are the image plus a usage summary and total token count. **api key is the base64 encoded service account, stored in the `.env` as `SERVICE_ACCOUNT_BASE64=...`**.
@@ -33,15 +62,20 @@ the `reasoning` widget defaults to `low` (reasoning models otherwise burn `max_t
 
 - **jz OpenRouter Image**, image **generation and editing** through openrouter. a separate node from the VLM one because it's a different api, not a mode of it: `POST /api/v1/images` (not `/chat/completions`), a `prompt`/`n`/`aspect_ratio`/`resolution` body, images back as `data[].b64_json`, and its own model catalogue at `/api/v1/images/models` that doesn't overlap `/api/v1/models`.
 wire an IMAGE in and every frame becomes an `input_references` entry — that's how editing / img2img works here. outputs the IMAGE batch plus the cost and a usage json.
-**`auto` on a widget omits that field entirely** rather than sending a default: supported parameters vary sharply per model — `resolution` doesn't exist on `gpt-5-image` or `flux.2-pro`, `n` caps at 1 for most models but 10 for `gpt-5-image`, `seed` is unsupported on `gemini-3-pro-image`. **api key is shared with the VLM node** (`[API] OPENROUTER_API_KEY` in `config.ini`).
-the `model` dropdown on **both openrouter nodes** is the live catalogue, cached to a gitignored `models_cache.json` (24h) and refreshed in the background — `INPUT_TYPES()` never blocks on the network, so a slow or unreachable openrouter can't stall comfyui startup. curated favourites stay pinned at the top, `custom` still reaches anything not listed.
+**`auto` on a widget omits that field entirely** rather than sending a default: supported parameters vary sharply per model — `resolution` doesn't exist on `gpt-5-image` or `flux.2-pro`, `n` caps at 1 for most models but 10 for `gpt-5-image`, `seed` is unsupported on `gemini-3-pro-image`. 
+> **model dropdowns** on the openrouter and byteplus nodes are the **live catalogue**, cached to a gitignored `models_cache.json` (24h) and refreshed on a background thread — `INPUT_TYPES()` never blocks on the network, so a slow or unreachable provider can't stall comfyui startup or break node registration offline. curated favourites stay pinned at the top and `custom` reaches anything not listed. byteplus is filtered by `task_type`, not `modalities` (which is incomplete upstream — a live model can have no `output_modalities` at all).
+
 **watch the cost**: these models bill per output *token*, not per image. a 1024x1024 from `gpt-5-image-mini` (the cheapest) is ~4160 image tokens ≈ **$0.033** — the per-token figure in openrouter's model listing looks tiny but multiplies fast, and the bigger models are ~15x that. the `cost` output reports what each call actually charged
 
-- **jz BytePlus Seedream (image)** and **jz BytePlus Seedance (video)** + **jz BytePlus Seedance Fetch**, the official byteplus modelark api (`ark.ap-southeast.bytepluses.com/api/v3`, `eu-west` too). key from `BYTEPLUS_API_KEY` in `.env`, or `ARK_API_KEY`, or `[BYTEDANCE]` in `config.ini`. model dropdowns are the live catalogue, filtered by `task_type` (`modalities` is incomplete upstream — a live model can have no `output_modalities` at all).
-**seedream** is synchronous (~8s): `1k`/`2k`/`4k` or custom WxH (921,600–16,777,216 px), n images per call, wire an IMAGE in and every frame becomes a reference for editing. note the api's watermark default is **on**, so the node always sends the flag explicitly.
-**seedance** submits a task and polls it, returning a native **VIDEO** (a 5s 1080p clip as an IMAGE batch would be ~3 GB). it also outputs `task_id`, and the **Fetch** node picks a job up by id — tasks live 48h, so a graph that errors after the spend is recoverable for free.
-⚠️ **why this node validates so hard**: seedance parameters ride as text flags on the prompt (`--rs --rt --dur --fps --wm --cf --seed`), and the server validates **only** `--resolution` and `--duration`. every other flag, and any unknown flag, is **silently ignored and still billed** — a typo'd `--ratio` buys you a perfectly valid, completely wrong video. and a running task **cannot be cancelled** (`DELETE` → `409`). so: flags are whitelisted client-side before anything is sent, the token cost is printed first, `seed` is never `control_after_generate` (a re-queue would spend again), billable POSTs are sent **once** with no retries (a retried submit that actually landed bills twice), and the `applied` output echoes the parameters the server really used so a dropped flag is visible.
-cost is per token and exact in `usage`: 1080p/16:9/5s/24fps = 246,840 tokens ≈ **$0.62** on seedance-1-0-pro
+- **jz BytePlus Seedream (image)**, the official byteplus modelark image api (`ark.ap-southeast.bytepluses.com/api/v3`, `eu-west` too). synchronous, ~8s. `1k`/`2k`/`4k` or a custom WxH (921,600–16,777,216 px), `n` images per call, and wiring an IMAGE in makes every frame a reference — that's how editing and multi-reference blending work.
+parameter support varies per model and **is** enforced (`seedream-4-0` rejects `output_format`; `dola-seedream-5-0-pro` rejects `4k`), so only what you actually set is sent. the api's watermark default is **on**, so the node always sends the flag explicitly. billing is per output token, exact in `usage`
+
+- **jz BytePlus Seedance (video)**, submits a generation task, polls it, and returns a native **VIDEO** — a 5s 1080p clip decoded to an IMAGE batch would be ~3 GB. also outputs `task_id` and `applied`.
+⚠️ **this is the node that validates hardest, and here is why.** seedance parameters ride as text flags on the prompt (`--rs --rt --dur --fps --wm --cf --seed`), and the server validates **only** `--resolution` and `--duration`. every other flag — and any unknown flag — is **silently ignored and still billed**: a typo'd `--ratio` buys a perfectly valid, completely wrong video. worse, a running task **cannot be cancelled** (`DELETE` → `409`), so the charge is committed the moment the POST returns.
+so: flags are whitelisted client-side before anything is sent, the token cost is printed first, `seed` is deliberately **not** `control_after_generate` (a re-queue would spend again), billable POSTs are sent **once** with no retries (a retried submit whose first attempt landed bills twice), and `applied` echoes the parameters the server really used so a dropped flag is visible instead of silent.
+cost is per token: 1080p/16:9/5s/24fps = 246,840 tokens ≈ **$0.62** on `seedance-1-0-pro`
+
+- **jz BytePlus Seedance Fetch (by task id)**, picks a job up by its `cgt-…` id. reads are free and tasks live **48h**, so a graph that errors after the spend is fully recoverable — and a job that outran `poll_timeout` is not money lost
 
 ### jz/image
 
@@ -121,3 +155,11 @@ resolution comes from the `width`/`height` widgets, or from a connected LATENT (
 - **jz Choice**, picks from a list of choices (STRING input, one per line or another separator) by NAME — reordering the list upstream never silently changes the pick, it either still matches or raises listing the options. when the choices come from a string-literal node, the `choice` widget turns into a real dropdown (live-refreshed); with runtime-computed choices it stays a text field. outputs the value and its index
 
 ![jz_choice](screenshots/jz_choice.png)
+
+---
+
+## screenshots
+
+the older nodes have one; these don't yet — drop a `screenshots/<name>.png` in and add an `!\[name\](screenshots/name.png)` line:
+
+`jz_openrouter_image` · `jz_byteplus_seedream` · `jz_byteplus_seedance` · `jz_byteplus_seedance_fetch` · `jz_image_sanity` · `jz_resize_and_pad` · `jz_resolution_selector` · `jz_before_after_slider` · `jz_shift_sigmas`
