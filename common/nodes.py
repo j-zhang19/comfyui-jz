@@ -16,6 +16,24 @@ class AnyType(str):
 
 ANY = AnyType("*")
 
+
+class ComboAny(list):
+    """Combo options that still accept a wired STRING.
+
+    ComfyUI validates a link with `received_type != input_type` and gives up on
+    a plain list (`if not isinstance(input_type, str): return False`), so a
+    dropdown normally refuses every incoming wire — which would break saved
+    workflows that feed jz Pad Calculator's aspect_ratio / resolution here.
+    An always-equal __ne__ (the wildcard trick jz Switch / jz Fallback use)
+    keeps those links valid, and serializes to /object_info exactly like a
+    plain list so the frontend draws an ordinary dropdown.
+
+    The cost: it accepts ANY type, so _pick() re-validates at run time.
+    """
+
+    def __ne__(self, other):
+        return False
+
 # how the list-taking nodes split their text input
 SEPARATORS = {"newline": "\n", "comma": ",", "semicolon": ";", "pipe": "|"}
 

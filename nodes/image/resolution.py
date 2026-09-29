@@ -18,7 +18,7 @@ They disagree slightly by design — 16:9 at 1 MP is 1360x768 by the formula but
 """
 import math
 
-from .pad_calculator import DIMENSION_MAP
+from ...common.gemini_dims import DIMENSION_MAP
 
 ASPECT_RATIOS = list(DIMENSION_MAP)
 RESOLUTIONS = list(next(iter(DIMENSION_MAP.values())))

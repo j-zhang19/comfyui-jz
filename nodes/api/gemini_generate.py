@@ -1,16 +1,13 @@
 import torch
-import requests
 import base64
 import json
-import os
-import subprocess
-import tempfile
-import time
 from io import BytesIO
 from PIL import Image
 
 from ...common.images import pil_to_b64, pils_to_batch, tensor_frame_to_pil
-from ..image.pad_calculator import DIMENSION_MAP
+from ...common.gemini_dims import DIMENSION_MAP
+from ...common.google_auth import GLA_SCOPE, VERTEX_SCOPE, access_token
+from ...common.nodes import ComboAny
 from ...common.nodes import scalar
 
 # The 10 values the API actually accepts, taken from the one dimension table so
@@ -18,24 +15,6 @@ from ...common.nodes import scalar
 # "auto", which is a pad-calculator fitting mode and a 400 from Gemini.
 ASPECT_RATIOS = list(DIMENSION_MAP)
 RESOLUTIONS = list(next(iter(DIMENSION_MAP.values())))
-
-
-class _ComboAny(list):
-    """Combo options that still accept a wired STRING.
-
-    ComfyUI validates a link with `received_type != input_type` and gives up on
-    a plain list (`if not isinstance(input_type, str): return False`), so a
-    dropdown normally refuses every incoming wire — which would break saved
-    workflows that feed jz Pad Calculator's aspect_ratio / resolution here.
-    An always-equal __ne__ (the wildcard trick jz Switch / jz Fallback use)
-    keeps those links valid, and serializes to /object_info exactly like a
-    plain list so the frontend draws an ordinary dropdown.
-
-    The cost: it accepts ANY type, so _pick() re-validates at run time.
-    """
-
-    def __ne__(self, other):
-        return False
 
 
 def _pick(name: str, wired, widget, valid: list) -> str:
@@ -46,83 +25,6 @@ def _pick(name: str, wired, widget, valid: list) -> str:
                          f"one of {', '.join(valid)}")
     return value
 
-
-
-def _get_access_token(
-    service_account_b64: str,
-    scope: str = "https://www.googleapis.com/auth/generative-language",
-) -> tuple[str, str]:
-    """Generate OAuth2 access token from base64-encoded service account JSON.
-
-    Args:
-        service_account_b64: base64-encoded service account JSON.
-        scope: OAuth scope to request. Use the generative-language scope for the
-            AI Studio (generativelanguage.googleapis.com) endpoint, or the
-            cloud-platform scope for Vertex AI (aiplatform.googleapis.com).
-
-    Returns:
-        Tuple of (access_token, project_id)
-    """
-    sa_json = base64.b64decode(service_account_b64).decode("utf-8")
-    sa_data = json.loads(sa_json)
-
-    client_email = sa_data["client_email"]
-    private_key = sa_data["private_key"]
-    project_id = sa_data["project_id"]
-
-    header = {"alg": "RS256", "typ": "JWT"}
-    now = int(time.time())
-
-    payload = {
-        "iss": client_email,
-        "scope": scope,
-        "aud": "https://oauth2.googleapis.com/token",
-        "iat": now,
-        "exp": now + 3600,
-    }
-
-    header_b64 = (
-        base64.urlsafe_b64encode(json.dumps(header, separators=(",", ":")).encode())
-        .decode()
-        .rstrip("=")
-    )
-    payload_b64 = (
-        base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode())
-        .decode()
-        .rstrip("=")
-    )
-
-    message = f"{header_b64}.{payload_b64}"
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".pem", delete=False) as tmp:
-        tmp.write(private_key)
-        tmp_path = tmp.name
-
-    try:
-        proc = subprocess.run(
-            ["openssl", "dgst", "-sha256", "-sign", tmp_path, "-binary"],
-            input=message.encode(),
-            capture_output=True,
-            check=True,
-        )
-        signature = base64.urlsafe_b64encode(proc.stdout).decode().rstrip("=")
-    finally:
-        os.unlink(tmp_path)
-
-    jwt_token = f"{header_b64}.{payload_b64}.{signature}"
-
-    resp = requests.post(
-        "https://oauth2.googleapis.com/token",
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        data={
-            "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-            "assertion": jwt_token,
-        },
-    )
-    resp.raise_for_status()
-    access_token = resp.json()["access_token"]
-
-    return access_token, project_id
 
 
 # generativelanguage.googleapis.com (AI Studio) only accepts these HarmCategory
@@ -144,10 +46,6 @@ VERTEX_SAFETY_SETTINGS = GLA_SAFETY_SETTINGS + [
     {"category": "HARM_CATEGORY_IMAGE_SEXUALLY_EXPLICIT", "threshold": "OFF"},
     {"category": "HARM_CATEGORY_JAILBREAK", "threshold": "OFF"},
 ]
-
-GLA_SCOPE = "https://www.googleapis.com/auth/generative-language"
-VERTEX_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
-
 
 class jz_GeminiGenerate:
     """ComfyUI node for Gemini image generation via Vertex AI."""
@@ -179,8 +77,8 @@ class jz_GeminiGenerate:
                 # Calculator's outputs) keeps validating. To wire a NEW one use
                 # the aspect_ratio_in / resolution_in sockets appended below —
                 # the frontend may refuse to draw a link into a combo socket.
-                "aspect_ratio": (_ComboAny(ASPECT_RATIOS), {"default": "1:1"}),
-                "resolution": (_ComboAny(RESOLUTIONS), {"default": "1K"}),
+                "aspect_ratio": (ComboAny(ASPECT_RATIOS), {"default": "1:1"}),
+                "resolution": (ComboAny(RESOLUTIONS), {"default": "1K"}),
                 # Cache-buster only: NOT sent to Gemini (the REST API has no seed).
                 # ComfyUI caches a node whose inputs are unchanged, so with fixed
                 # params it would never re-call the API. A changing seed changes the
@@ -336,13 +234,13 @@ class jz_GeminiGenerate:
         # publisher model; many keys only have AI Studio (generativelanguage)
         # access, so that is the default.
         if backend == "vertex":
-            access_token, project_id = _get_access_token(
+            access_token, project_id = access_token(
                 service_account_base64, VERTEX_SCOPE
             )
             url = f"https://aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/{model}:generateContent"
             safety_settings = VERTEX_SAFETY_SETTINGS
         else:
-            access_token, _ = _get_access_token(service_account_base64, GLA_SCOPE)
+            access_token, _ = access_token(service_account_base64, GLA_SCOPE)
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
             safety_settings = GLA_SAFETY_SETTINGS
 
