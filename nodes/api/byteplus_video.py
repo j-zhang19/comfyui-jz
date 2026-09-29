@@ -26,9 +26,10 @@ import time
 from comfy_api.latest import InputImpl
 
 from ...common.byteplus import (CURATED_VIDEO, RATIOS, REGIONS, RESOLUTIONS,
-                                api_get, api_post, build_flags, byteplus_key,
+                                api_get, api_post, build_flags,
                                 estimate_tokens, format_cost, image_refs,
                                 model_ids, resolve_model)
+from ...common.secrets import byteplus_key
 from ...common.http import SESSION
 
 TASKS = "/contents/generations/tasks"

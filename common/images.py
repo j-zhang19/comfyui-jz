@@ -20,16 +20,47 @@ def resize_long_edge(pil: Image.Image, px: int) -> Image.Image:
                        max(1, round(pil.height * scale))), Image.LANCZOS)
 
 
-def pil_to_data_url(pil: Image.Image) -> str:
+def pil_to_b64(pil: Image.Image) -> str:
+    """Bare base64 PNG — what an inline_data field wants."""
     buf = io.BytesIO()
     pil.convert("RGB").save(buf, format="PNG")
-    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    return base64.b64encode(buf.getvalue()).decode()
 
 
-def batch_to_data_urls(image: torch.Tensor, max_edge: int) -> list[str]:
-    """Every frame of a BHWC batch becomes one data-URL image."""
-    return [pil_to_data_url(resize_long_edge(tensor_frame_to_pil(f), max_edge))
+def pil_to_data_url(pil: Image.Image) -> str:
+    """The same bytes as a data URL — what an image_url field wants."""
+    return "data:image/png;base64," + pil_to_b64(pil)
+
+
+def batch_to_data_urls(image: torch.Tensor, max_edge: int = 0) -> list[str]:
+    """Every frame of a BHWC batch becomes one data-URL image.
+
+    max_edge 0 uploads at native size; providers that 413 on big payloads pass
+    a limit instead.
+    """
+    if image is None:
+        return []
+    return [pil_to_data_url(resize_long_edge(tensor_frame_to_pil(f), max_edge)
+                            if max_edge else tensor_frame_to_pil(f))
             for f in image]
+
+
+def pils_to_batch(pils: list) -> torch.Tensor:
+    """Stack PIL images into one IMAGE batch.
+
+    A straggler of a different size is resized to the first frame: an API
+    asked for n images should return n identical sizes, but a batch tensor
+    cannot hold mixed ones, so this keeps the whole result rather than
+    dropping it.
+    """
+    if not pils:
+        raise ValueError("no images to stack")
+    ref = pils[0].size
+    return torch.stack([
+        torch.from_numpy(
+            np.array((p if p.size == ref else p.resize(ref, Image.LANCZOS))
+                     .convert("RGB")).astype(np.float32) / 255.0)
+        for p in pils], dim=0)
 
 
 def pil_to_tensor_batch(pil: Image.Image) -> torch.Tensor:

@@ -37,9 +37,9 @@ class jz_Fallback:
         # absent — and only if fallback is actually connected (requesting an
         # unconnected input is a hard NodeInputError)
         if primary is None and fallback is None:
-            if dynprompt is not None and unique_id is not None:
-                if "fallback" not in dynprompt.get_node(unique_id).get("inputs", {}):
-                    return []
+            if (dynprompt is not None and unique_id is not None
+                    and "fallback" not in dynprompt.get_node(unique_id).get("inputs", {})):
+                return []
             return ["fallback"]
         return []
 

@@ -18,12 +18,11 @@ import base64
 import io
 import json
 
-import numpy as np
-import torch
 from PIL import Image
 
 from ...common.http import post_with_retries, truncate_b64
-from ...common.images import batch_to_data_urls
+from ...common.images import batch_to_data_urls, pils_to_batch
+from ...common.nodes import format_usd
 from ...common.openrouter import model_ids
 from ...common.secrets import openrouter_key
 
@@ -152,18 +151,9 @@ class jz_OpenRouterImage:
             raise RuntimeError(f"OpenRouter returned no images: "
                                f"{truncate_b64(json.dumps(data))[:400]}")
 
-        pils = [decode_image(it).convert("RGB") for it in items]
-        # n>1 should give identical dimensions, but resize stragglers to the
-        # first so they can share one batch tensor
-        ref = pils[0].size
-        frames = [torch.from_numpy(
-            np.array(p if p.size == ref else p.resize(ref, Image.LANCZOS))
-            .astype(np.float32) / 255.0) for p in pils]
-
+        batch = pils_to_batch([decode_image(it) for it in items])
         usage = data.get("usage") or {}
-        cost = usage.get("cost")
-        cost_str = f"${cost:.4f}" if isinstance(cost, (int, float)) else "$?"
-        return (torch.stack(frames, dim=0), cost_str,
+        return (batch, format_usd(usage.get("cost")),
                 json.dumps(usage, ensure_ascii=False))
 
 

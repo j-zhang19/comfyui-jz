@@ -4,6 +4,7 @@ Retries 408/429/5xx (honoring Retry-After) and network errors with capped
 exponential backoff. Permanent 4xx returns immediately for the caller to
 raise — resending a bad request never helps.
 """
+import contextlib
 import re
 import time
 
@@ -42,10 +43,8 @@ def post_with_retries(url: str, headers: dict, payload: dict,
             delay = min(BACKOFF_CAP, RETRY_BASE_DELAY * 2 ** attempt)
             retry_after = resp.headers.get("Retry-After")
             if retry_after:
-                try:
+                with contextlib.suppress(ValueError):  # non-numeric -> keep backoff
                     delay = min(float(retry_after), RETRY_AFTER_CAP)
-                except ValueError:
-                    pass
             print(f"[{tag}] HTTP {resp.status_code}, retry "
                   f"{attempt + 1}/{MAX_ATTEMPTS - 1} in {delay:.0f}s", flush=True)
             time.sleep(delay)

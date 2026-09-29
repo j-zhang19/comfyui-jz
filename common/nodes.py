@@ -25,3 +25,8 @@ def scalar(v, default=None):
     if isinstance(v, list):
         return v[0] if v else default
     return v if v is not None else default
+
+
+def format_usd(amount) -> str:
+    """Cost as $0.0400, or $? when the provider reported none."""
+    return f"${amount:.4f}" if isinstance(amount, (int, float)) else "$?"

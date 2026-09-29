@@ -23,20 +23,13 @@ way:
    would create a second, separately billed task. Polling GETs are idempotent
    and do retry.
 """
-import base64
-import configparser
-import io
 import json
-from pathlib import Path
-
-import numpy as np
-from PIL import Image
 
 from .http import SESSION, truncate_b64
+from .images import batch_to_data_urls
 from .model_cache import cached_ids
-from .secrets import get_secret
-
-_PACK_ROOT = Path(__file__).resolve().parents[1]
+from .nodes import format_usd
+from .secrets import byteplus_key
 
 REGIONS = {
     "ap-southeast": "https://ark.ap-southeast.bytepluses.com/api/v3",
@@ -66,20 +59,6 @@ TOKEN_RATES = {
 }
 
 FETCH_TIMEOUT = 8
-
-
-def byteplus_key(node_input: str = "") -> str:
-    """node input > BYTEPLUS_API_KEY > ARK_API_KEY > config.ini [BYTEDANCE]."""
-    key = get_secret("BYTEPLUS_API_KEY", node_input) or get_secret("ARK_API_KEY")
-    if not key:
-        cfg = configparser.ConfigParser(interpolation=None)
-        cfg.read(str(_PACK_ROOT / "config.ini"), encoding="utf-8")
-        key = cfg.get("BYTEDANCE", "ARK_API_KEY", fallback="").strip()
-    if not key:
-        raise RuntimeError(
-            "No BytePlus key: set the api_key input, BYTEPLUS_API_KEY in "
-            "comfyui-jz/.env, or [BYTEDANCE] ARK_API_KEY in config.ini")
-    return key
 
 
 def _headers(key):
@@ -139,18 +118,12 @@ def api_get(region, path, key, timeout=60):
     return r.json()
 
 
-def tensor_to_data_uri(frame) -> str:
-    arr = (frame.clamp(0, 1).cpu().numpy() * 255.0).astype(np.uint8)
-    buf = io.BytesIO()
-    Image.fromarray(arr).save(buf, format="PNG")
-    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
-
-
 def image_refs(image) -> list:
-    """Every frame of an IMAGE batch becomes one reference data-URI."""
-    if image is None:
-        return []
-    return [tensor_to_data_uri(f) for f in image]
+    """Every frame of an IMAGE batch becomes one reference data-URI.
+
+    Sent at native size: unlike OpenRouter, Ark does not 413 on large refs.
+    """
+    return batch_to_data_urls(image)
 
 
 def build_flags(resolution="auto", ratio="auto", duration=0, fps=0,
@@ -210,7 +183,5 @@ def token_rate(model: str):
 
 
 def format_cost(model, tokens):
-    if not tokens:
-        return "$?"
     rate = token_rate(model)
-    return f"${tokens / 1_000_000 * rate:.4f}" if rate else "$?"
+    return format_usd(tokens / 1_000_000 * rate if tokens and rate else None)

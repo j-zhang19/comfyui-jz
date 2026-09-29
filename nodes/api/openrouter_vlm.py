@@ -13,6 +13,7 @@ import json
 
 from ...common.http import post_with_retries, truncate_b64
 from ...common.images import batch_to_data_urls
+from ...common.nodes import format_usd
 from ...common.openrouter import model_ids
 from ...common.secrets import openrouter_key
 
@@ -132,9 +133,7 @@ class jz_OpenRouterVLM:
         if json_output and text.startswith("```"):
             # some models still wrap in ```json fences despite response_format
             text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-        cost = (data.get("usage") or {}).get("cost")
-        cost_str = f"${cost:.4f}" if isinstance(cost, (int, float)) else "$?"
-        return (text, cost_str)
+        return (text, format_usd((data.get("usage") or {}).get("cost")))
 
 
 NODE_CLASS_MAPPINGS = {"jz_OpenRouterVLM": jz_OpenRouterVLM}

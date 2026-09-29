@@ -3,6 +3,7 @@
 Keeps keys out of workflow JSON: leave the node's widget empty and the value
 is resolved server-side at execution time.
 """
+import configparser
 import os
 from pathlib import Path
 
@@ -31,21 +32,38 @@ def get_secret(name: str, node_input: str = "") -> str:
     return _read_dotenv().get(name, "")
 
 
-def openrouter_key(node_input: str = "") -> str:
-    """OpenRouter key: node input > env > .env > config.ini [API]. Raises if absent.
+def resolve_key(env_names: list, ini: tuple, node_input: str = "",
+                hint: str = "") -> str:
+    """First hit wins: node input > env vars (process env, then .env) >
+    config.ini. Raises `hint` when nothing is set.
 
-    config.ini is checked last and is the historical home for this one key, so
-    both OpenRouter nodes resolve it the same way.
+    Every provider key in this pack resolves the same way; only the names and
+    the config.ini section differ.
     """
-    key = get_secret("OPENROUTER_API_KEY", node_input)
-    if not key:
-        import configparser
-        cfg = configparser.ConfigParser(interpolation=None)
-        cfg.read(str(_PACK_ROOT / "config.ini"), encoding="utf-8")
-        key = cfg.get("API", "OPENROUTER_API_KEY", fallback="").strip()
-    if not key:
-        raise RuntimeError(
-            "No OpenRouter key: set the api_key input, the OPENROUTER_API_KEY "
-            "env var, or [API] OPENROUTER_API_KEY in comfyui-jz/config.ini "
-            "(pack root)")
-    return key
+    if node_input and node_input.strip():
+        return node_input.strip()
+    for name in env_names:
+        found = get_secret(name)
+        if found:
+            return found
+    cfg = configparser.ConfigParser(interpolation=None)
+    cfg.read(str(_PACK_ROOT / "config.ini"), encoding="utf-8")
+    found = cfg.get(ini[0], ini[1], fallback="").strip()
+    if found:
+        return found
+    raise RuntimeError(hint)
+
+
+def openrouter_key(node_input: str = "") -> str:
+    return resolve_key(
+        ["OPENROUTER_API_KEY"], ("API", "OPENROUTER_API_KEY"), node_input,
+        "No OpenRouter key: set the api_key input, the OPENROUTER_API_KEY env "
+        "var, or [API] OPENROUTER_API_KEY in comfyui-jz/config.ini (pack root)")
+
+
+def byteplus_key(node_input: str = "") -> str:
+    return resolve_key(
+        ["BYTEPLUS_API_KEY", "ARK_API_KEY"], ("BYTEDANCE", "ARK_API_KEY"),
+        node_input,
+        "No BytePlus key: set the api_key input, BYTEPLUS_API_KEY in "
+        "comfyui-jz/.env, or [BYTEDANCE] ARK_API_KEY in config.ini")

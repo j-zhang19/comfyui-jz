@@ -40,9 +40,9 @@ class jz_Switch:
         # unconnected socket is indistinguishable from an unevaluated lazy
         # one here (both None) — so check the graph for an actual link
         want = "on_true" if condition else "on_false"
-        if dynprompt is not None and unique_id is not None:
-            if want not in dynprompt.get_node(unique_id).get("inputs", {}):
-                return []
+        if (dynprompt is not None and unique_id is not None
+                and want not in dynprompt.get_node(unique_id).get("inputs", {})):
+            return []
         return [want]
 
     def switch(self, condition, on_true=None, on_false=None,

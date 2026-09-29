@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 import requests
 import base64
 import json
@@ -10,6 +9,7 @@ import time
 from io import BytesIO
 from PIL import Image
 
+from ...common.images import pil_to_b64, pils_to_batch, tensor_frame_to_pil
 from ..image.pad_calculator import DIMENSION_MAP
 from ...common.nodes import scalar
 
@@ -232,12 +232,12 @@ class jz_GeminiGenerate:
     INPUT_IS_LIST = True
 
     def _tensor_to_base64(self, image: torch.Tensor) -> str:
-        """Convert a ComfyUI image tensor (BHWC, 0-1 float) to a base64 PNG string."""
-        img_np = (image[0].cpu().numpy() * 255).astype(np.uint8)
-        pil_img = Image.fromarray(img_np)
-        buffer = BytesIO()
-        pil_img.save(buffer, format="PNG")
-        return base64.b64encode(buffer.getvalue()).decode("utf-8")
+        """ComfyUI image tensor (BHWC, 0-1 float) -> base64 PNG.
+
+        The shared helper clamps to 0-1 first; this used to cast straight to
+        uint8, which wraps around on an out-of-range pixel.
+        """
+        return pil_to_b64(tensor_frame_to_pil(image[0]))
 
     def generate(
         self,
@@ -377,9 +377,9 @@ class jz_GeminiGenerate:
             data = resp.json()
             try:
                 parts_resp = data["candidates"][0]["content"]["parts"]
-            except (KeyError, IndexError, TypeError):
+            except (KeyError, IndexError, TypeError) as e:
                 raise RuntimeError(
-                    f"Unexpected response structure: {json.dumps(data)[:500]}")
+                    f"Unexpected response structure: {json.dumps(data)[:500]}") from e
             usage = data.get("usageMetadata") or {}
             for part in parts_resp:
                 if "inlineData" in part:
@@ -416,18 +416,7 @@ class jz_GeminiGenerate:
             "per_call": usages,
         }, ensure_ascii=False)
 
-        # stack into one IMAGE batch; identical aspect/resolution should give
-        # identical dims, but resize stragglers to the first frame if not
-        ref = pils[0].size
-        frames = []
-        for p in pils:
-            if p.size != ref:
-                p = p.resize(ref, Image.LANCZOS)
-            arr = np.array(p).astype(np.float32) / 255.0
-            frames.append(torch.from_numpy(arr))
-        output_tensor = torch.stack(frames, dim=0)
-
-        return (output_tensor, usage_json, total_tokens)
+        return (pils_to_batch(pils), usage_json, total_tokens)
 
 
 # key frozen: saved workflows reference "GeminiImageGenerate" — never change it

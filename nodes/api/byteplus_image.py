@@ -9,17 +9,17 @@ rejected by dola-seedream-5-0-pro. So only what you actually set is sent.
 
 Billing is per output token (a 1k image is ~4096), reported exactly in `usage`.
 """
+import base64
 import io
 import json
 
-import numpy as np
-import torch
 from PIL import Image
 
-from ...common.byteplus import (CURATED_IMAGE, IMAGE_SIZES, REGIONS, api_post,
-                                byteplus_key, image_refs, model_ids,
-                                resolve_model)
+from ...common.byteplus import (CURATED_IMAGE, IMAGE_SIZES, REGIONS, api_post, image_refs,
+                                model_ids, resolve_model)
+from ...common.secrets import byteplus_key
 from ...common.http import SESSION
+from ...common.images import pils_to_batch
 
 _PX_MIN, _PX_MAX = 921_600, 16_777_216
 
@@ -110,7 +110,6 @@ class jz_BytePlusSeedream:
                 pils.append(Image.open(io.BytesIO(
                     SESSION.get(url, timeout=300).content)).convert("RGB"))
             elif it.get("b64_json"):
-                import base64
                 urls.append("<b64_json>")
                 pils.append(Image.open(io.BytesIO(
                     base64.b64decode(it["b64_json"]))).convert("RGB"))
@@ -118,15 +117,12 @@ class jz_BytePlusSeedream:
             raise RuntimeError(f"jz BytePlus Seedream: no image bytes in "
                                f"{[sorted(i) for i in items]}")
 
-        ref = pils[0].size
-        frames = [torch.from_numpy(
-            np.array(p if p.size == ref else p.resize(ref, Image.LANCZOS))
-            .astype(np.float32) / 255.0) for p in pils]
+        batch = pils_to_batch(pils)
         usage = data.get("usage") or {}
-        print(f"[jz seedream] {len(frames)} image(s) {ref[0]}x{ref[1]} "
-              f"tokens={usage.get('total_tokens', '?')}", flush=True)
-        return (torch.stack(frames, dim=0), "\n".join(urls),
-                json.dumps(usage, ensure_ascii=False))
+        print(f"[jz seedream] {len(pils)} image(s) {pils[0].size[0]}x"
+              f"{pils[0].size[1]} tokens={usage.get('total_tokens', '?')}",
+              flush=True)
+        return (batch, "\n".join(urls), json.dumps(usage, ensure_ascii=False))
 
 
 NODE_CLASS_MAPPINGS = {"jz_BytePlusSeedream": jz_BytePlusSeedream}

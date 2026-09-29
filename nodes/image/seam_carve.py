@@ -32,10 +32,8 @@ _BIG = 1e6  # mask weight magnitude ("large" per the paper)
 
 def _backward_energy(rgb: np.ndarray, use_luma: bool) -> np.ndarray:
     """L2 gradient magnitude, central differences, periodic wrap."""
-    if use_luma:
-        chans = [_luma(rgb)]
-    else:
-        chans = [rgb[..., c] for c in range(rgb.shape[-1])]
+    chans = ([_luma(rgb)] if use_luma
+             else [rgb[..., c] for c in range(rgb.shape[-1])])
     acc = np.zeros(rgb.shape[:2], dtype=np.float64)
     for ch in chans:
         dx = np.roll(ch, -1, axis=1) - np.roll(ch, 1, axis=1)
