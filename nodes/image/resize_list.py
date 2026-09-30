@@ -8,19 +8,55 @@ mixed sizes, lists can.
 Resampling goes through comfy.utils.common_upscale, the same call jz Resize
 And Pad uses, so `interpolation` offers the same five methods and a frame that
 is already at the target size is passed through untouched.
+
+The appended `batch` output is the same frames as one tensor, for the nodes
+that need a real batch rather than a list. A tensor cannot hold mixed sizes,
+so each frame is centred on a canvas big enough for all of them — when every
+frame already matches (a uniform set of inputs) nothing is padded and the
+batch is just a stack.
 """
 import comfy.utils
+import torch
 
 from ...common.images import INTERPOLATION
 from ...common.nodes import scalar
 
 
+def stack_padded(tensors: list) -> torch.Tensor:
+    """One tensor from frames of differing size, each centred, padded black.
+
+    Mixed channel counts (an RGBA beside an RGB) are levelled up with an
+    opaque alpha, and the padding itself is opaque — matching jz Resize And Pad.
+    """
+    mh = max(t.shape[1] for t in tensors)
+    mw = max(t.shape[2] for t in tensors)
+    mc = max(t.shape[3] for t in tensors)
+    frames = []
+    for t in tensors:
+        f = t[0]
+        h, w, c = f.shape
+        if c < mc:
+            f = torch.cat(
+                [f, torch.ones(h, w, mc - c, dtype=f.dtype, device=f.device)], -1)
+        if (h, w) != (mh, mw):
+            canvas = torch.zeros(mh, mw, mc, dtype=f.dtype, device=f.device)
+            if mc == 4:
+                canvas[..., 3] = 1.0
+            y, x = (mh - h) // 2, (mw - w) // 2
+            canvas[y:y + h, x:x + w] = f
+            f = canvas
+        frames.append(f)
+    return torch.stack(frames, dim=0)
+
+
 class jz_ResizeLongEdge:
     CATEGORY = "jz/image"
     INPUT_IS_LIST = True
-    OUTPUT_IS_LIST = (True, True)
-    RETURN_TYPES = ("IMAGE", "INT")
-    RETURN_NAMES = ("images", "count")
+    # `batch` appended (append-only rule) and marked scalar: a False slot is
+    # taken as one value, a True slot is extend()ed
+    OUTPUT_IS_LIST = (True, True, False)
+    RETURN_TYPES = ("IMAGE", "INT", "IMAGE")
+    RETURN_NAMES = ("images", "count", "batch")
     FUNCTION = "resize"
 
     @classmethod
@@ -65,7 +101,7 @@ class jz_ResizeLongEdge:
                 out.append(chw.permute(0, 2, 3, 1).contiguous())
         if not out:
             raise ValueError("jz Resize Long Edge: no images provided")
-        return (out, [len(out)])
+        return (out, [len(out)], stack_padded(out))
 
 
 NODE_CLASS_MAPPINGS = {"jz_ResizeLongEdge": jz_ResizeLongEdge}
