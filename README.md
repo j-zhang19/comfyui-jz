@@ -46,6 +46,8 @@ custom nodes using https calls, with retries on 429/5xx responses.
 |---|---|---|
 | openrouter | `OPENROUTER_API_KEY` | `[API] OPENROUTER_API_KEY` |
 | byteplus | `BYTEPLUS_API_KEY` or `ARK_API_KEY` | `[BYTEDANCE] ARK_API_KEY` |
+
+⚠️ **byteplus keys are region-scoped.** a key issued for `ap-southeast` returns `401 AuthenticationError` on `eu-west` and vice versa — and byteplus words it as "the API key ... is missing or invalid", which reads like a key problem. make the `region` widget match the key. the node's 401 message now says this.
 | gemini | `SERVICE_ACCOUNT_BASE64` (base64 of the service-account json) | — |
 
 - **jz Gemini Generate**, *vertex* or *generativelanguage generateContent*. it works with zero images (text-to-image), single images, batches or a proper image list. when using `batch_size`, it fires **parallel calls** (shared token, with per-call retries).

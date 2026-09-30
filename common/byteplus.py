@@ -93,14 +93,29 @@ def resolve_model(model: str, custom_model: str) -> str:
     return custom_model.strip()
 
 
+def _raise_http(r, region):
+    """BytePlus says "the API key ... is missing or invalid" for a key that is
+    simply issued for the other region, which reads as a key problem when it is
+    a region problem. Say so."""
+    if r.status_code == 401:
+        raise RuntimeError(
+            f"BytePlus 401 in region '{region}': the key was rejected. Keys are "
+            f"REGION-SCOPED — an {'/'.join(REGIONS)} key fails on the other "
+            f"region. Check the `region` widget matches the key, and that the "
+            f"key is set (api_key input, BYTEPLUS_API_KEY in comfyui-jz/.env, "
+            f"or [BYTEDANCE] ARK_API_KEY in config.ini). "
+            f"{truncate_b64(r.text)[:200]}")
+    raise RuntimeError(f"BytePlus HTTP {r.status_code}: "
+                       f"{truncate_b64(r.text)[:400]}")
+
+
 def api_post(region, path, payload, key, timeout=600):
     """A billable submit: sent ONCE. See the module docstring — a retry whose
     first attempt actually landed would bill twice and cannot be cancelled."""
     r = SESSION.post(f"{REGIONS[region]}{path}", headers=_headers(key),
                      json=payload, timeout=timeout)
     if r.status_code >= 400:
-        raise RuntimeError(f"BytePlus HTTP {r.status_code}: "
-                           f"{truncate_b64(r.text)[:400]}")
+        _raise_http(r, region)
     data = r.json()
     if isinstance(data, dict) and data.get("error"):
         raise RuntimeError(f"BytePlus error: "
@@ -113,8 +128,7 @@ def api_get(region, path, key, timeout=60):
     r = SESSION.get(f"{REGIONS[region]}{path}", headers=_headers(key),
                     timeout=timeout)
     if r.status_code >= 400:
-        raise RuntimeError(f"BytePlus HTTP {r.status_code}: "
-                           f"{truncate_b64(r.text)[:400]}")
+        _raise_http(r, region)
     return r.json()
 
 
