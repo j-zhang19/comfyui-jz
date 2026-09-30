@@ -133,11 +133,20 @@ def api_get(region, path, key, timeout=60):
 
 
 def image_refs(image) -> list:
-    """Every frame of an IMAGE batch becomes one reference data-URI.
+    """Every frame becomes one reference data-URI.
 
-    Sent at native size: unlike OpenRouter, Ark does not 413 on large refs.
+    Accepts a batch tensor or a LIST of them (what jz Resize Long Edge emits),
+    so mixed-size references work — a tensor cannot hold mixed sizes but the
+    API takes each reference separately. Sent at native size: unlike
+    OpenRouter, Ark does not 413 on large refs.
     """
-    return batch_to_data_urls(image)
+    if image is None:
+        return []
+    out = []
+    for t in (image if isinstance(image, list) else [image]):
+        if t is not None:
+            out += batch_to_data_urls(t)
+    return out
 
 
 def build_flags(resolution="auto", ratio="auto", duration=0, fps=0,

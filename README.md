@@ -97,7 +97,7 @@ plain image ops (often image in image out), no API involved
 
 - **jz Resize Long Edge (list)**, normalizes a list or batch of mixed-size images to one long edge, outputs a list (of images). `interpolation` picks the resample method (same five as jz Resize And Pad); a frame already at the target size is passed through untouched, and alpha is preserved
 the appended **`batch`** output is the same frames as one tensor, for nodes that need a real batch rather than a list. a tensor can't hold mixed sizes, so each frame is centred on the smallest canvas that fits them all and the rest is padded opaque black — **uniform inputs are padded not at all**, the batch is just a stack. an RGBA beside an RGB levels the RGB up with an opaque alpha.
-note the two outputs are for different things: feed **`images`** (the list) to anything that takes images one at a time, and **`batch`** where a single tensor is required. for api reference images prefer the list — padding bars get uploaded and the model sees them
+note the two outputs are for different things: feed **`images`** (the list) to anything that takes images one at a time, and **`batch`** where a single tensor is required. for api reference images prefer the list — the byteplus nodes take it directly, and padding bars would otherwise be uploaded for the model to see
 
 ![jz_resize_long_edge](screenshots/jz_resize_long_edge.png)
 

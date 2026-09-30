@@ -29,6 +29,7 @@ from ...common.byteplus import (CURATED_VIDEO, RATIOS, REGIONS, RESOLUTIONS,
                                 api_get, api_post, build_flags,
                                 estimate_tokens, format_cost, image_refs,
                                 model_ids, resolve_model)
+from ...common.nodes import scalar
 from ...common.secrets import byteplus_key
 from ...common.http import SESSION
 
@@ -90,6 +91,8 @@ def _finish(task, tag="jz seedance"):
 
 class jz_BytePlusSeedance:
     CATEGORY = "jz/api"
+    # see jz BytePlus Seedream: a LIST must not fan out into N billed tasks
+    INPUT_IS_LIST = True
     RETURN_TYPES = ("VIDEO", "STRING", "STRING", "STRING")
     RETURN_NAMES = ("video", "task_id", "applied", "usage")
     FUNCTION = "generate"
@@ -137,9 +140,21 @@ class jz_BytePlusSeedance:
                  last_frame=None, reference_images=None, custom_model="",
                  api_key="", region="ap-southeast", poll_timeout=900,
                  poll_interval=3):
+        # INPUT_IS_LIST: every widget arrives as a 1-element list
+        prompt = str(scalar(prompt, ""))
+        resolution = str(scalar(resolution, "auto"))
+        ratio = str(scalar(ratio, "auto"))
+        duration, fps = int(scalar(duration, 0)), int(scalar(fps, 0))
+        camera_fixed = bool(scalar(camera_fixed, False))
+        watermark = bool(scalar(watermark, False))
+        seed = int(scalar(seed, -1))
+        region = str(scalar(region, "ap-southeast"))
+        poll_timeout = int(scalar(poll_timeout, 900))
+        poll_interval = int(scalar(poll_interval, 3))
+        api_key = str(scalar(api_key, ""))
         if not prompt.strip():
             raise ValueError("jz BytePlus Seedance: prompt is empty")
-        model = resolve_model(model, custom_model)
+        model = resolve_model(str(scalar(model)), str(scalar(custom_model, "")))
 
         # validated before anything billable happens
         flags = build_flags(resolution, ratio, duration, fps,

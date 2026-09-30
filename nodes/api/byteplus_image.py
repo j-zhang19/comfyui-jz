@@ -17,6 +17,7 @@ from PIL import Image
 
 from ...common.byteplus import (CURATED_IMAGE, IMAGE_SIZES, REGIONS, api_post, image_refs,
                                 model_ids, resolve_model)
+from ...common.nodes import scalar
 from ...common.secrets import byteplus_key
 from ...common.http import SESSION
 from ...common.images import pils_to_batch
@@ -26,6 +27,9 @@ _PX_MIN, _PX_MAX = 921_600, 16_777_216
 
 class jz_BytePlusSeedream:
     CATEGORY = "jz/api"
+    # takes a LIST as well as a batch, so mixed-size references work and a
+    # list never fans out into one billed call per item
+    INPUT_IS_LIST = True
     RETURN_TYPES = ("IMAGE", "STRING", "STRING")
     RETURN_NAMES = ("images", "urls", "usage")
     FUNCTION = "generate"
@@ -68,9 +72,18 @@ class jz_BytePlusSeedream:
     def generate(self, prompt, model, size, custom_width, custom_height, n,
                  watermark, seed, image=None, custom_model="", api_key="",
                  region="ap-southeast"):
+        # INPUT_IS_LIST: every widget arrives as a 1-element list
+        prompt = str(scalar(prompt, ""))
+        size = str(scalar(size, "2k"))
+        n, seed = int(scalar(n, 1)), int(scalar(seed, -1))
+        watermark = bool(scalar(watermark, False))
+        region = str(scalar(region, "ap-southeast"))
+        custom_width = int(scalar(custom_width, 1024))
+        custom_height = int(scalar(custom_height, 1024))
+        api_key = str(scalar(api_key, ""))
         if not prompt.strip():
             raise ValueError("jz BytePlus Seedream: prompt is empty")
-        model = resolve_model(model, custom_model)
+        model = resolve_model(str(scalar(model)), str(scalar(custom_model, "")))
 
         if size == "custom":
             w, h = int(custom_width), int(custom_height)
