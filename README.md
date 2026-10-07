@@ -1,6 +1,6 @@
 # comfyui-jz
 
-personal comfyui nodes, in the `jz/` category so they never mix with the installed packs + they are easy to find. **24 nodes.**
+personal comfyui nodes, in the `jz/` category so they never mix with the installed packs + they are easy to find. **26 nodes.**
 
 when editing existing nodes, ONLY append widgets and outputs... so that old workflows still work. node **keys** are frozen too — a few still read `Gemini*` for that reason.
 
@@ -8,7 +8,7 @@ when editing existing nodes, ONLY append widgets and outputs... so that old work
 
 ## contents
 
-- [jz/api](#jzapi) (6) : Gemini Generate · OpenRouter VLM · OpenRouter Image · BytePlus Seedream · BytePlus Seedance · BytePlus Seedance Fetch
+- [jz/api](#jzapi) (8) : Gemini Generate · OpenRouter VLM · OpenRouter Image · BytePlus Seedream · BytePlus Seedance · BytePlus Seedance Fetch · fal Image · fal Video
 - [jz/image](#jzimage) (12) : Composite · Composite Back · Double Threshold · Edge Sizes · Image Sanity · Pad Calculator · Resize And Pad · Resize Long Edge · Resolution Selector · Seam Carve · Seam Repair · Before/After Slider
 - [jz/sampling](#jzsampling) (1) : Shift Sigmas
 - [jz/util](#jzutil) (5) : Choice · Display JSON · Fallback · String Picker · Switch
@@ -27,7 +27,7 @@ shared code lives in `common/` (never auto-discovered):
 | `images.py` | tensor ↔ PIL ↔ base64/data-URL, `pils_to_batch`, BT.601 `luma`, the shared `INTERPOLATION` list |
 | `nodes.py` | node-authoring helpers: `AnyType`/`ANY` wildcard sockets, `ComboAny`, `scalar()` for `INPUT_IS_LIST`, `SEPARATORS`, `format_usd` |
 | `model_cache.py` | model dropdowns served instantly from a 24h cache, refreshed on a background thread — `INPUT_TYPES()` never blocks on the network |
-| `openrouter.py` / `byteplus.py` | the per-provider adapters over that cache, plus each API's request shape |
+| `openrouter.py` / `byteplus.py` / `fal.py` | the per-provider adapters over that cache, plus each API's request shape |
 | `gemini_dims.py` | the aspect-ratio × resolution → exact-size table, shared by three nodes |
 | `fill_color.py` | padding-colour search (edge-average, and a colour provably absent from the image) |
 | `google_auth.py` | service account → OAuth2 token |
@@ -46,6 +46,7 @@ custom nodes using https calls, with retries on 429/5xx responses.
 |---|---|---|
 | openrouter | `OPENROUTER_API_KEY` | `[API] OPENROUTER_API_KEY` |
 | byteplus | `BYTEPLUS_API_KEY` or `ARK_API_KEY` | `[BYTEDANCE] ARK_API_KEY` |
+| fal.ai | `FAL_KEY` or `FAL_API_KEY` | `[FAL] api_key` |
 
 ⚠️ **byteplus keys are region-scoped.** a key issued for `ap-southeast` returns `401 AuthenticationError` on `eu-west` and vice versa — and byteplus words it as "the API key ... is missing or invalid", which reads like a key problem. make the `region` widget match the key. the node's 401 message now says this.
 | gemini | `SERVICE_ACCOUNT_BASE64` (base64 of the service-account json) | — |
@@ -78,6 +79,11 @@ so: flags are whitelisted client-side before anything is sent, the token cost is
 cost is per token: 1080p/16:9/5s/24fps = 246,840 tokens ≈ **$0.62** on `seedance-1-0-pro`
 
 - **jz BytePlus Seedance Fetch (by task id)**, picks a job up by its `cgt-…` id. reads are free and tasks live **48h**, so a graph that errors after the spend is fully recoverable — and a job that outran `poll_timeout` is not money lost
+
+- **jz fal Image** and **jz fal Video**, [fal.ai](https://fal.ai) through its queue api (`queue.fal.run`, `Authorization: Key …`). key from `FAL_KEY` in `.env` or `[FAL] api_key` in `config.ini`. no `fal-client` dependency — the rest is small enough for the pack's own http layer.
+fal has **~1500 models and every one takes different arguments**, so model-specific parameters go in a `params` json widget rather than a fixed widget set. what makes that safe: fal publishes **each model's openapi schema, free and unauthenticated**, so the node validates against the real schema *before anything billable is sent* — a typo'd key, a bad enum, a wrong type or a missing required field raises locally and lists what's allowed. the console also prints the model's accepted parameters so you don't have to go look them up.
+the schema also decides how a wired IMAGE is sent: models declaring `image_urls` get every frame, `image_url` gets the first, and a text-to-image model that takes no image at all says so instead of being sent an argument it would reject. both nodes take a **batch or a LIST**, so one call either way.
+**fal can cancel a running job**, so a request that outruns `poll_timeout` is cancelled rather than left billing. billable submits are sent once with no retries. video returns a native VIDEO plus the `request_id`
 
 ### jz/image
 
