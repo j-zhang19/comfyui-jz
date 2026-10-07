@@ -172,4 +172,4 @@ resolution comes from the `width`/`height` widgets, or from a connected LATENT (
 
 the older nodes have one; these don't yet — drop a `screenshots/<name>.png` in and add an `!\[name\](screenshots/name.png)` line:
 
-`jz_openrouter_image` · `jz_byteplus_seedream` · `jz_byteplus_seedance` · `jz_byteplus_seedance_fetch` · `jz_image_sanity` · `jz_resize_and_pad` · `jz_resolution_selector` · `jz_before_after_slider` · `jz_shift_sigmas`
+`jz_openrouter_image` · `jz_byteplus_seedream` · `jz_byteplus_seedance` · `jz_byteplus_seedance_fetch` · `jz_image_sanity` · `jz_resize_and_pad` · `jz_resolution_selector` · `jz_before_after_slider` · `jz_shift_sigmas` · `jz_fal_image` · `jz_fal_video`
