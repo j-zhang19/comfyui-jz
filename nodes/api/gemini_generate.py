@@ -234,18 +234,18 @@ class jz_GeminiGenerate:
         # publisher model; many keys only have AI Studio (generativelanguage)
         # access, so that is the default.
         if backend == "vertex":
-            access_token, project_id = access_token(
+            token, project_id = access_token(
                 service_account_base64, VERTEX_SCOPE
             )
             url = f"https://aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/{model}:generateContent"
             safety_settings = VERTEX_SAFETY_SETTINGS
         else:
-            access_token, _ = access_token(service_account_base64, GLA_SCOPE)
+            token, _ = access_token(service_account_base64, GLA_SCOPE)
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
             safety_settings = GLA_SAFETY_SETTINGS
 
         headers = {
-            "Authorization": f"Bearer {access_token}",
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
         # NOTE: the REST API key is camelCase "safetySettings"; the snake_case
