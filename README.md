@@ -1,6 +1,6 @@
 # comfyui-jz
 
-personal comfyui nodes, in the `jz/` category so they never mix with the installed packs + they are easy to find. **26 nodes.**
+personal comfyui nodes, in the `jz/` category so they never mix with the installed packs + they are easy to find. **27 nodes.**
 
 when editing existing nodes, ONLY append widgets and outputs... so that old workflows still work. node **keys** are frozen too — a few still read `Gemini*` for that reason.
 
@@ -8,7 +8,7 @@ when editing existing nodes, ONLY append widgets and outputs... so that old work
 
 ## contents
 
-- [jz/api](#jzapi) (8) : Gemini Generate · OpenRouter VLM · OpenRouter Image · BytePlus Seedream · BytePlus Seedance · BytePlus Seedance Fetch · fal Image · fal Video
+- [jz/api](#jzapi) (9) : Gemini Generate · OpenRouter VLM · OpenRouter Image · BytePlus Seedream · BytePlus Seedance · BytePlus Seedance Fetch · fal Image · fal Video · OpenAI Image
 - [jz/image](#jzimage) (12) : Composite · Composite Back · Double Threshold · Edge Sizes · Image Sanity · Pad Calculator · Resize And Pad · Resize Long Edge · Resolution Selector · Seam Carve · Seam Repair · Before/After Slider
 - [jz/sampling](#jzsampling) (1) : Shift Sigmas
 - [jz/util](#jzutil) (5) : Choice · Display JSON · Fallback · String Picker · Switch
@@ -27,7 +27,7 @@ shared code lives in `common/` (never auto-discovered):
 | `images.py` | tensor ↔ PIL ↔ base64/data-URL, `pils_to_batch`, BT.601 `luma`, the shared `INTERPOLATION` list |
 | `nodes.py` | node-authoring helpers: `AnyType`/`ANY` wildcard sockets, `ComboAny`, `scalar()` for `INPUT_IS_LIST`, `SEPARATORS`, `format_usd` |
 | `model_cache.py` | model dropdowns served instantly from a 24h cache, refreshed on a background thread — `INPUT_TYPES()` never blocks on the network |
-| `openrouter.py` / `byteplus.py` / `fal.py` | the per-provider adapters over that cache, plus each API's request shape |
+| `openrouter.py` / `byteplus.py` / `fal.py` / `openai.py` | the per-provider adapters over that cache, plus each API's request shape |
 | `gemini_dims.py` | the aspect-ratio × resolution → exact-size table, shared by three nodes |
 | `fill_color.py` | padding-colour search (edge-average, and a colour provably absent from the image) |
 | `google_auth.py` | service account → OAuth2 token |
@@ -47,6 +47,7 @@ custom nodes using https calls, with retries on 429/5xx responses.
 | openrouter | `OPENROUTER_API_KEY` | `[API] OPENROUTER_API_KEY` |
 | byteplus | `BYTEPLUS_API_KEY` or `ARK_API_KEY` | `[BYTEDANCE] ARK_API_KEY` |
 | fal.ai | `FAL_KEY` or `FAL_API_KEY` | `[FAL] api_key` |
+| openai | `OPENAI_API_KEY` | `[OPENAI] OPENAI_API_KEY` |
 
 ⚠️ **byteplus keys are region-scoped.** a key issued for `ap-southeast` returns `401 AuthenticationError` on `eu-west` and vice versa — and byteplus words it as "the API key ... is missing or invalid", which reads like a key problem. make the `region` widget match the key. the node's 401 message now says this.
 | gemini | `SERVICE_ACCOUNT_BASE64` (base64 of the service-account json) | — |
@@ -84,6 +85,11 @@ cost is per token: 1080p/16:9/5s/24fps = 246,840 tokens ≈ **$0.62** on `seedan
 fal has **~1500 models and every one takes different arguments**, so model-specific parameters go in a `params` json widget rather than a fixed widget set. what makes that safe: fal publishes **each model's openapi schema, free and unauthenticated**, so the node validates against the real schema *before anything billable is sent* — a typo'd key, a bad enum, a wrong type or a missing required field raises locally and lists what's allowed. the console also prints the model's accepted parameters so you don't have to go look them up.
 the schema also decides how a wired IMAGE is sent: models declaring `image_urls` get every frame, `image_url` gets the first, and a text-to-image model that takes no image at all says so instead of being sent an argument it would reject. both nodes take a **batch or a LIST**, so one call either way.
 **fal can cancel a running job**, so a request that outruns `poll_timeout` is cancelled rather than left billing. billable submits are sent once with no retries. video returns a native VIDEO plus the `request_id`
+
+- **jz OpenAI Image**, `gpt-image` generation and editing on the official openai api (`api.openai.com/v1`). nothing wired = `/images/generations`; wire an IMAGE (batch or LIST, up to 16 frames) and it's `/images/edits` in its json form, every frame one reference. an optional MASK applies to the first image (white = area to change) and is converted to the alpha png the api wants, resized to that image.
+`auto` on a widget omits the field: support varies per model: `xhigh`/`max` quality exist only on `gpt-image-2.5-*`, sizes beyond the three classic ones and `custom` need `gpt-image-2`+ (custom WxH is checked locally: multiples of 16, ratio within 3:1, edge ≤3840, 655,360–8,294,400 px), and `input_fidelity` is rejected by `gpt-image-2`+. `background: transparent` puts the alpha on the `mask` output.
+billed per token; `cost` is computed from `usage` with openai's published rates. measured: a 1024² low-quality edit on `gpt-image-2.5-flare` = 1024 image-in + 34 text-in + 196 image-out tokens ≈ **$0.014**. there is no idempotency key, so the billable POST is sent **once**, no retries.
+**no openai video node**: openai shut down sora and the whole `/v1/videos` api on 2026-09-24, with no replacement
 
 ### jz/image
 

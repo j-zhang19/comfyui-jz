@@ -61,6 +61,13 @@ def openrouter_key(node_input: str = "") -> str:
         "var, or [API] OPENROUTER_API_KEY in comfyui-jz/config.ini (pack root)")
 
 
+def openai_key(node_input: str = "") -> str:
+    return resolve_key(
+        ["OPENAI_API_KEY"], ("OPENAI", "OPENAI_API_KEY"), node_input,
+        "No OpenAI key: set the api_key input, OPENAI_API_KEY in "
+        "comfyui-jz/.env, or [OPENAI] OPENAI_API_KEY in config.ini")
+
+
 def byteplus_key(node_input: str = "") -> str:
     return resolve_key(
         ["BYTEPLUS_API_KEY", "ARK_API_KEY"], ("BYTEDANCE", "ARK_API_KEY"),
